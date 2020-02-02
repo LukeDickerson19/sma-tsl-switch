@@ -62,6 +62,8 @@ import numpy as np
 
         make plots for the PL
 
+            for some reason the total PL data (visable in the 3rd graph) is fucking up
+
         then update TSL plot to take up entire figure
             unless theres anything else to plot at this stage???
 
@@ -75,7 +77,6 @@ import numpy as np
                     way it gets triggered if theres a really long short
 
                         ... make it in a different version though
-
 
 
         then make backup_tsl_test2.py
@@ -155,7 +156,7 @@ TF = 0.0025 # TF = trading fee
 INCLUDE_TF = False  # flag if we want to include the TF in our calculations
 
 # SMA_WINDOWS = [9, 19, 29, 39, 49, 59, 69, 79, 89, 99] # most accurate if they're all odd integers
-SMA_WINDOWS = [50]#[10, 20, 30, 40, 50, 100, 200, 300, 400, 500] # most accurate if they're all odd integers
+SMA_WINDOWS = [9]#[50]#[10, 20, 30, 40, 50, 100, 200, 300, 400, 500] # most accurate if they're all odd integers
 TSL_VALUES = [0.05]#[0.0025, 0.005, 0.01, 0.025, 0.05, 0.10, 0.20]
 
 # pprint constants
@@ -509,7 +510,7 @@ def get_tsl_dct_helper(coin, w, x, price_series, verbose=False):
         'cur_price_pl',  # profit/loss (pl) of the current actual price
         'cur_sl_pl',     # profit/loss (pl) of the current stop loss
         'tot_price_pl',  # profit/loss (pl) of the total (from beginning until now) of the current price
-        'tot_sl_pl'      # profit/loss (pl) of the total (from beginning until now) of the current stop loss
+        'tot_sl_pl',     # profit/loss (pl) of the total (from beginning until now) of the current stop loss
         'active',        # boolean flag if the TSL exists or not
         'triggered',     # boolean flag if the TSL has been triggered or not
         'invested'       # boolean flag if the algorithm is invested long/short
@@ -800,7 +801,8 @@ def get_investments(dct, output_investment_data=False):
 
             tsl_dct = {}
             for k, (x, tsl_x_dct) in enumerate(sma_w_dct['tsl_dct'].items()):
-                tsl_x_dct = get_investments_helper(coin, w, x, price_df['price'], sma_w_df, tsl_x_dct, verbose=False)
+                tsl_x_dct = get_investments_helper(
+                    coin, w, x, price_df['price'], sma_w_df, tsl_x_dct, verbose=False)
                 tsl_dct[x] = tsl_x_dct
 
             dct['asset_dct'][coin]['sma_dct'][w]['tsl_dct'] = tsl_dct
@@ -816,22 +818,31 @@ def get_investments(dct, output_investment_data=False):
 def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False):
 
     long_df, short_df = tsl_x_dct['long_df'], tsl_x_dct['short_df']
-    # print('\nlong df')
-    # print(long_df)
+
+    # init the 1st w 'invested' flags to false, and the 1st w 'tot_sl_pl' and 'tot_price_pl' to 0
+    long_df['invested'][:w]      = False
+    long_df['tot_sl_pl'][:w]     = 0.0
+    long_df['tot_price_pl'][:w]  = 0.0
+    short_df['invested'][:w]     = False
+    short_df['tot_sl_pl'][:w]    = 0.0
+    short_df['tot_price_pl'][:w] = 0.0
+
+    print('BEFORE')
+
+    print('\nlong df')
+    print(long_df)
     # print('\nshort_df')
     # print(short_df)
-    # input()
+    input()
 
     # print(price_series)
 
     # iterate over the price data but start at w-1+1
     # -1 b/c 0 indexing, +1 b/c we want to start when we have an SMA slope to work w/
-    long_df['invested'][:w]  = False
-    short_df['invested'][:w] = False
     for i, price in price_series.iloc[w-1+1:].items():
 
         # set investment status at i equal to what it was at i-1
-        long_df.at[i, 'invested']  = long_df.at[i-1,  'invested']
+        long_df.at[i,  'invested'] = long_df.at[i-1,  'invested']
         short_df.at[i, 'invested'] = short_df.at[i-1, 'invested']
 
         if verbose:
@@ -867,7 +878,7 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
                     if verbose: print('long TSL not triggered')
 
                     # update long investment
-                    long_df = update_investment(price, long_df, i)
+                    long_df = update_investment_returns(price, long_df, i, 'long')
 
                     if verbose: print('long investment updated')
 
@@ -886,7 +897,7 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
 
                     # enter long investment
                     long_df.at[i, 'invested'] = True
-                    long_df = update_investment(price, long_df, i)
+                    long_df = update_investment_returns(price, long_df, i, 'long')
 
                     if verbose: print('exitted short investment & entered long investment')
 
@@ -894,7 +905,7 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
 
                     if verbose: print('short TSL not triggered')
 
-                    short_df = update_investment(price, short_df, i)
+                    short_df = update_investment_returns(price, short_df, i, 'short')
 
                     if verbose: print('updated short investment')
 
@@ -910,7 +921,7 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
 
                     # enter a long investment
                     long_df.at[i, 'invested'] = True
-                    long_df = update_investment(price, long_df, i)
+                    long_df = update_investment_returns(price, long_df, i, 'long')
 
                     if verbose: print('entered long investment')
 
@@ -942,7 +953,7 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
                     if verbose: print('short TSL not triggered')
 
                     # update short investment
-                    short_df = update_investment(price, short_df, i)
+                    short_df = update_investment_returns(price, short_df, i, 'short')
 
                     if verbose: print('short investment updated')
 
@@ -961,7 +972,7 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
 
                     # enter short investment
                     short_df.at[i, 'invested'] = True
-                    short_df = update_investment(price, short_df, i)
+                    short_df = update_investment_returns(price, short_df, i, 'short')
 
                     if verbose: print('exitted long investment & entered short investment')
 
@@ -969,7 +980,7 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
 
                     if verbose: print('long TSL not triggered')
 
-                    long_df = update_investment(price, long_df, i)
+                    long_df = update_investment_returns(price, long_df, i, 'long')
 
                     if verbose: print('updated long investment')
 
@@ -985,7 +996,7 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
 
                     # enter a short investment
                     short_df.at[i, 'invested'] = True
-                    short_df = update_investment(price, short_df, i)
+                    short_df = update_investment_returns(price, short_df, i, 'short')
 
                     if verbose: print('entered short investment')
 
@@ -993,9 +1004,27 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
 
                     if verbose: print('long TSL not triggered')
 
-        if verbose: print()
+        long_df  = update_portfolio_returns(long_df,  i)
+        short_df = update_portfolio_returns(short_df, i)
 
-def update_investment(price, df, i):
+        if verbose:
+            print()
+            input()
+
+    print('AFTER')
+
+    print('\nlong df')
+    print(long_df)
+    print('\nshort_df')
+    print(short_df)
+    input()
+
+
+    return {
+        'long_df'  : long_df,
+        'short_df' : short_df
+    }
+def update_investment_returns(price, df, i, investment_type):
 
     # update p/l variables
 
@@ -1005,11 +1034,26 @@ def update_investment(price, df, i):
     sl_exit    = df.loc[i, 'stop_loss']   * (1 - tf)
     price_exit = price                    * (1 - tf)
 
-    df.at[i, 'cur_sl_pl']    = abs(sl_exit    - enter) / enter
-    df.at[i, 'cur_price_pl'] = abs(price_exit - enter) / enter
+    if investment_type == 'long':
+        df.at[i, 'cur_sl_pl']    =  (sl_exit    - enter) / enter
+        df.at[i, 'cur_price_pl'] =  (price_exit - enter) / enter
+    elif investment_type == 'short':
+        df.at[i, 'cur_sl_pl']    = -(sl_exit    - enter) / enter
+        df.at[i, 'cur_price_pl'] = -(price_exit - enter) / enter
 
     return df
+def update_portfolio_returns(df, i):
 
+    df.at[i, 'tot_sl_pl'] = \
+        df.loc[i-1, 'tot_sl_pl'] + \
+        (df.loc[i-1, 'cur_sl_pl'] if df.at[i, 'triggered'] else 0.0)
+
+    cur_price_pl = df.loc[i, 'cur_price_pl']
+    df.at[i, 'tot_price_pl'] = \
+        df.loc[i, 'tot_sl_pl'] + \
+        (cur_price_pl if not np.isnan(cur_price_pl) else 0.0)
+
+    return df
 def plot_investment_data(dct):
 
     # create date_labels and x_tick_indeces
@@ -1038,7 +1082,8 @@ def plot_investment_data(dct):
             sma_w_dct = dct['asset_dct'][coin]['sma_dct'][w]
             for k, x in enumerate(TSL_VALUES):
                 tsl_x_dct = sma_w_dct['tsl_dct'][x]
-                skip_plotting = plot_tsl_data_helper(date_labels, x_tick_indeces, coin, price_series, sma_w_dct, x, tsl_x_dct)
+                skip_plotting = plot_investment_data_helper(
+                    date_labels, x_tick_indeces, coin, price_series, sma_w_dct, x, tsl_x_dct)
                 if skip_plotting:
                     return
 def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series, sma_w_dct, x, tsl_x_dct):
@@ -1049,10 +1094,6 @@ def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series,
     sma_data = sma_w_dct['df']['sma']
     sma_lbl  = '%s' % sma_w_dct['sma_label']
 
-    bollinger_lbl = 'bollinger bands (2 std devs)'
-    bollinger_upper_bound = sma_w_dct['df']['bollinger_upper_bound']
-    bollinger_lower_bound = sma_w_dct['df']['bollinger_lower_bound']
-
     fig, ax = plt.subplots(
         nrows=3, ncols=1,
         num='stop loss = %s' % (long_x_str),
@@ -1062,10 +1103,7 @@ def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series,
     _legend_loc, _b2a = 'center left', (1, 0.5) # puts legend ouside plot
 
     ax[0].plot(price_series,          color='black', label='price')
-    ax[0].plot(sma_data,              color='blue',  label=sma_lbl)
-    ax[0].plot(bollinger_upper_bound, color='blue',  label=bollinger_lbl, linestyle='--')
-    ax[0].plot(bollinger_lower_bound, color='blue',  label=None, linestyle='--')
-    # blink gym $15/month
+    # ax[0].plot(sma_data,              color='blue',  label=sma_lbl)
     ax[0].plot(long_df['stop_loss'],  color='green', label='%.1f %% long TSL ' % x)
     ax[0].plot(short_df['stop_loss'], color='red',   label='%.1f %% short TSL ' % x)
     ax[0].legend(loc=_legend_loc, bbox_to_anchor=_b2a)
@@ -1099,27 +1137,27 @@ def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series,
     highlight_sma_slope(up=True,  color='green')
     highlight_sma_slope(up=False, color='red')
 
-    # ax[1].plot(long_df['cur_price_pl'],  color='green', label='Long Current Stop Loss P/L')
-    # ax[1].plot(short_df['cur_price_pl'], color='red',   label='Short Current Stop Loss P/L')
-    # ax[1].legend(loc=_legend_loc, bbox_to_anchor=_b2a)
-    # ax[1].grid()
-    # # ax[1].yaxis.grid()  # draw horizontal lines
-    # # ax[1].yaxis.set_zorder(-1.0)  # draw horizontal lines behind histogram bars
-    # ax[1].set_title('Current TSL Profit/Loss')
-    # ax[1].set_xticks(x_tick_indeces)
-    # ax[1].set_xticklabels('')
-    # ax[1].yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0, decimals=1))
+    ax[1].plot(long_df['cur_price_pl'],  color='green', label='Long Current Stop Loss P/L')
+    ax[1].plot(short_df['cur_price_pl'], color='red',   label='Short Current Stop Loss P/L')
+    ax[1].legend(loc=_legend_loc, bbox_to_anchor=_b2a)
+    ax[1].grid()
+    # ax[1].yaxis.grid()  # draw horizontal lines
+    # ax[1].yaxis.set_zorder(-1.0)  # draw horizontal lines behind histogram bars
+    ax[1].set_title('Current TSL Profit/Loss')
+    ax[1].set_xticks(x_tick_indeces)
+    ax[1].set_xticklabels('')
+    ax[1].yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0, decimals=1))
 
-    # ax[2].plot(long_df['tot_sl_pl'],  color='green', label='Total Long Stop Loss P/L')
-    # ax[2].plot(short_df['tot_sl_pl'], color='red',   label='Total Short Stop Loss P/L')
-    # ax[2].legend(loc=_legend_loc, bbox_to_anchor=_b2a)
-    # ax[2].grid()
-    # # ax[2].yaxis.grid()  # draw horizontal lines
-    # ax[2].yaxis.set_zorder(-1.0)  # draw horizontal lines behind histogram bars
-    # ax[2].set_title('Total TSL Profit/Loss')
-    # ax[2].set_xticks(x_tick_indeces)
-    # ax[2].set_xticklabels(date_labels, ha='right', rotation=45)  # x axis should show date_labeles
-    # ax[2].yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0, decimals=1))
+    ax[2].plot(long_df['tot_sl_pl'],  color='green', label='Total Long Stop Loss P/L')
+    ax[2].plot(short_df['tot_sl_pl'], color='red',   label='Total Short Stop Loss P/L')
+    ax[2].legend(loc=_legend_loc, bbox_to_anchor=_b2a)
+    ax[2].grid()
+    # ax[2].yaxis.grid()  # draw horizontal lines
+    ax[2].yaxis.set_zorder(-1.0)  # draw horizontal lines behind histogram bars
+    ax[2].set_title('Total TSL Profit/Loss')
+    ax[2].set_xticks(x_tick_indeces)
+    ax[2].set_xticklabels(date_labels, ha='right', rotation=45)  # x axis should show date_labeles
+    ax[2].yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0, decimals=1))
 
     # plt.tight_layout()
     fig.subplots_adjust(
@@ -1188,121 +1226,9 @@ if __name__ == '__main__':
     # calculate SMA data
     dct = get_sma_dct(dct, output_sma_data=False)
 
-    # get TSL data
+    # calculate TSL data
     dct = get_tsl_dct(dct, output_tsl_data=False)
 
-    dct = get_investments(dct, output_investment_data=False)
-
-    sys.exit()
-
-
-
-
-
-
-    pct_with_trend_df = pd.DataFrame(columns=COINS, index=SMA_WINDOWS)
-    pct_with_trend_df.index.name = 'sma_window   '
-    total_ave_pct_with_trend = 0
-    p = True # if p: # plot, else don't plot
-    for i, (coin, df) in enumerate(dct.items()):
-        for j, w in enumerate(SMA_WINDOWS):
-
-            # Create a SMA from t0 to t0-w
-            col1_lbl = '%sp_SMA' % w
-            df[col1_lbl] = df['price'].rolling(window=w).mean()
-
-            # Create another SMA from t0+w/2 to t0-w/2
-            # (by shifting the real SMA up w/2 indeces and clipping the ends)
-            # ... this 2nd SMA will have no lag (but impossible to calculate in live trading)
-            col2_lbl = '%sp_trend' % w
-            df[col2_lbl] = df[col1_lbl].shift(periods=-int(w/2))
-            nan_at_beginning = list(range(int(w-1))) # OR do int(w/2) to clip the col2_lbl
-            nan_at_end = list(map(lambda i : (df.shape[0]-1) - i, list(range(int(w/2)))[::-1]))
-            indeces_to_clip = nan_at_beginning + nan_at_end
-            df.drop(indeces_to_clip, inplace=True) # remove first row (b/c it has a NaN value)
-            df.reset_index(drop=True, inplace=True) # reset index accordingly
-
-            # Determine when both SMAs have similar slope (both positive or both negative)
-            # and when they have opposite slope (one positive one negative).
-            #     when they have similar slope, the 1st SMA is with the trend,
-            #     when they have opposite slope, the 1st SMA hasn't realized the trend shift yet.
-            df['sma_with_trend'] = \
-                ((df[col1_lbl].diff() > 0) & (df[col2_lbl].diff() > 0)) | \
-                ((df[col1_lbl].diff() < 0) & (df[col2_lbl].diff() < 0))
-            df.drop([0], inplace=True) # remove first row b/c the diff has an NaN here
-            df.reset_index(drop=True, inplace=True) # reset index accordingly
-
-            # calculate percent of the time the SMA is with the trend
-            pct_with_trend = df['sma_with_trend'].value_counts(normalize=True).loc[True] * 100
-            pct_with_trend_df.at[w, coin] = pct_with_trend
-            total_ave_pct_with_trend += pct_with_trend
-
-            # highlight when the SMA slope is + green
-            # highlight when the SMA slope is - red
-            df['sma_positive_slope'] = df[col1_lbl].diff()# > 0
-
-            # do tsl strategy
-            tsl_dct = get_tsl_dct_from_price_iteration(coin, df, w, TSL_VALUES)
-            # tsl_dct = get_tsl_dct_from_csv_files(coin, df, TSL_VALUES)
-            plot_tsl_dct(TSL_VALUES, tsl_dct, df, col1_lbl)
-
-            print('endddd')
-            sys.exit()
-
-            # # plot the price, SMA and trend,
-            # # and highlight the regions where the sma is with the trend
-            # # and create a legend labeling everything and outputting the
-            # # percentage of the time the SMA is with the trend            
-            # if p:
-            #     fig, axes = plt.subplots(figsize=(11, 6))
-            #     axes.plot(df['price'],  c='black', label='price')
-            #     axes.plot(df[col1_lbl], c='blue',  label=col1_lbl)
-            #     axes.plot(df[col2_lbl], c='cyan', label=col2_lbl)
-            #     ranges_sma_with_trend = []
-            #     range_start, range_end = None, None
-            #     for index, value in df['sma_with_trend'].items():
-            #         if value: # True
-            #             if range_start != None:
-            #                 pass # continue on ...
-            #             else: # just starting
-            #                 range_start = index # started new range
-            #         else: # False
-            #             if range_start != None: # found the end
-            #                 range_end = index
-            #                 ranges_sma_with_trend.append((range_start, range_end))
-            #                 range_start, range_end = None, None
-            #             else:
-            #                 pass # continue on ... 
-            #     for range_start, range_end in ranges_sma_with_trend:
-            #         plt.axvspan(range_start, range_end, color='gray', alpha=0.5)
-            #     axes.title.set_text(
-            #         '%s/%s %s is w/ the %s %.2f %% of the time' % (
-            #             coin, TETHER, col1_lbl, col2_lbl, pct_with_trend))                
-            #     plt.legend(loc=(1.02, 0.40))
-            #     # adjust subplots and display it
-            #     ''' https://matplotlib.org/3.1.1/api/_as_gen/matplotlib.pyplot.subplots_adjust.html
-            #     subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=None)
-            #         left  = 0.125  # the left side of the subplots of the figure                      percentage
-            #         right = 0.9    # the right side of the subplots of the figure                     percentage
-            #         bottom = 0.1   # the bottom of the subplots of the figure                         percentage
-            #         top = 0.9      # the top of the subplots of the figure                            percentage
-            #         wspace = 0.2   # the amount of width reserved for blank space between subplots    number
-            #         hspace = 0.2   # the amount of height reserved for white space between subplots   number
-            #         '''
-            #     plt.subplots_adjust(
-            #         left   = 0.10,
-            #         right  = 0.85,
-            #         bottom = 0.10,
-            #         wspace = 0.25, hspace=0.5)
-
-            #     plt.show()
-            #     user_input = input('Press s to skip to end of test, or any other key to continue: ')
-            #     p = not (user_input == 's' or user_input == 'S')
-
-
-    print('\nPercent of the time the SMA is with the trend:\n')
-    print(pct_with_trend_df)
-
-    total_ave_pct_with_trend /= (len(COINS) * len(SMA_WINDOWS))
-    print('\nTotal average percent = %.2f %%\n' % total_ave_pct_with_trend)
+    # calculate investment p/l
+    dct = get_investments(dct, output_investment_data=True)
 
