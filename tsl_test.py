@@ -7,7 +7,8 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import pandas as pd
-pd.set_option('display.max_rows', 30)
+MAX_ROWS = 1000
+pd.set_option('display.max_rows', MAX_ROWS)
 pd.set_option('display.max_columns', 100)
 pd.set_option('display.width', 1000)
 import numpy as np
@@ -63,6 +64,10 @@ import numpy as np
         make plots for the PL
 
             for some reason the total PL data (visable in the 3rd graph) is fucking up
+
+                invested should equal true when triggered equals true
+                it should be false the next time step though
+                    however right now its false when triggered is true
 
         then update TSL plot to take up entire figure
             unless theres anything else to plot at this stage???
@@ -818,6 +823,7 @@ def get_investments(dct, output_investment_data=False):
 def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False):
 
     long_df, short_df = tsl_x_dct['long_df'], tsl_x_dct['short_df']
+    invested_long, invested_short = False, False
 
     # init the 1st w 'invested' flags to false, and the 1st w 'tot_sl_pl' and 'tot_price_pl' to 0
     long_df['invested'][:w]      = False
@@ -827,13 +833,13 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
     short_df['tot_sl_pl'][:w]    = 0.0
     short_df['tot_price_pl'][:w] = 0.0
 
-    print('BEFORE')
+    # print('BEFORE')
 
-    print('\nlong df')
-    print(long_df)
+    # print('\nlong df')
+    # print(long_df)
     # print('\nshort_df')
     # print(short_df)
-    input()
+    # input()
 
     # print(price_series)
 
@@ -842,8 +848,10 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
     for i, price in price_series.iloc[w-1+1:].items():
 
         # set investment status at i equal to what it was at i-1
-        long_df.at[i,  'invested'] = long_df.at[i-1,  'invested']
-        short_df.at[i, 'invested'] = short_df.at[i-1, 'invested']
+        long_df.at[i,  'invested'] = invested_long
+        short_df.at[i, 'invested'] = invested_short
+        # long_df.at[i,  'invested'] = long_df.at[i-1,  'invested']
+        # short_df.at[i, 'invested'] = short_df.at[i-1, 'invested']
 
         if verbose:
             print('-' * 100)
@@ -869,7 +877,8 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
                     if verbose: print('long TSL triggered')
 
                     # exit long investment
-                    long_df.at[i, 'invested'] = False
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+                    invested_long = False
 
                     if verbose: print('exitted long investment')
 
@@ -920,7 +929,8 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
                     if verbose: print('short TSL triggered')
 
                     # enter a long investment
-                    long_df.at[i, 'invested'] = True
+                    invested_long = True
+                    long_df.at[i, 'invested'] = invested_long
                     long_df = update_investment_returns(price, long_df, i, 'long')
 
                     if verbose: print('entered long investment')
@@ -944,7 +954,8 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
                     if verbose: print('short TSL triggered')
 
                     # exit short investment
-                    short_df.at[i, 'invested'] = False
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+                    invested_short = True
 
                     if verbose: print('exitted short investment')
 
@@ -968,10 +979,12 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
                     if verbose: print('long TSL triggered')
 
                     # exit long investment
-                    long_df.at[i, 'invested'] = False
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+                    invested_long = False
 
                     # enter short investment
-                    short_df.at[i, 'invested'] = True
+                    invested_short = True
+                    short_df.at[i, 'invested'] = invested_short
                     short_df = update_investment_returns(price, short_df, i, 'short')
 
                     if verbose: print('exitted long investment & entered short investment')
@@ -1012,12 +1025,13 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
             input()
 
     print('AFTER')
+    print('MAX_ROWS = %d' % MAX_ROWS)
 
     print('\nlong df')
     print(long_df)
     print('\nshort_df')
     print(short_df)
-    input()
+    # input()
 
 
     return {
@@ -1046,7 +1060,8 @@ def update_portfolio_returns(df, i):
 
     df.at[i, 'tot_sl_pl'] = \
         df.loc[i-1, 'tot_sl_pl'] + \
-        (df.loc[i-1, 'cur_sl_pl'] if df.at[i, 'triggered'] else 0.0)
+        (df.loc[i, 'cur_sl_pl'] if \
+            df.at[i, 'invested'] and df.at[i, 'triggered'] else 0.0)
 
     cur_price_pl = df.loc[i, 'cur_price_pl']
     df.at[i, 'tot_price_pl'] = \
