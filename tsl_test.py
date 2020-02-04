@@ -24,7 +24,7 @@ import numpy as np
         and when SMA is going down invest in the short TSL.
 
     EXPERIMENT DESCRIPTION:
-    
+
         for each coin in COINS:
             for each sma window length w in SMA_WINDOWS:
 
@@ -61,16 +61,20 @@ import numpy as np
 
     TO DO:
 
-        make plots for the PL
-
-            for some reason the total PL data (visable in the 3rd graph) is fucking up
-
-                invested should equal true when triggered equals true
-                it should be false the next time step though
-                    however right now its false when triggered is true
-
         then update TSL plot to take up entire figure
             unless theres anything else to plot at this stage???
+
+        why is cur PL going to -10 % sometimes
+            SMA_WINDOWS = [33]
+            TSL_VALUES = [0.01]
+
+            it might be better to draw the cur PL as just verticle bars
+                but I like seeing how it moooouuuoouuouououuvvves
+                    a green/red highlight could serve well hear
+                creating this verticle line could be a good way to verify the PL calculations are correct
+                each time its triggered:
+                    cur_actual_PL = +/- (stop_loss_value - enter_price) / enter_price
+                    tot_actual_PL += cur_actual_PL
 
         with the current const variables:
             we miss a large profit from a short
@@ -102,7 +106,7 @@ import numpy as np
             ... Use bollinger bands!
 
             for w in WINDOW_SIZES:
-                
+
                 if standard deviation of the price is smooth and consistent
                 (aka if the boolinger band's value hasn't changed that much over the timespan of the windows)
                 (aka if the sum of the all the changes in volitility (aka change in standard deviation of the price)
@@ -113,14 +117,14 @@ import numpy as np
                 The the SMA slope is above a threshold of Y
 
                     Then set a trailing stop loss at an x value of 2*pi (95 % chance it doesn't get triggered)
-                
+
             Note:
                 if Y is steep we'll be late to buy in
                 if Y is shallow we'll take more losses
                 The larger the slope the faster it will break
                 if Y is zero
                     this would then be a predictive algorithm
-                        and trades would be made based off likelihoods, not 
+                        and trades would be made based off likelihoods, not
 
 
         what if the distance the next timestep's value is from the previous timesteps moving average the more exponential the weights will become.
@@ -129,7 +133,7 @@ import numpy as np
 
                 w[i] = t[i] ^ (1 + d)
 
-                d = absolute value of percentage distance of current timestep's price from previous timestep's moving average 
+                d = absolute value of percentage distance of current timestep's price from previous timestep's moving average
                         this value will vary from 0.00 to 1.00
 
             ... this could yeild an SMA that doesn't lag !!!
@@ -161,8 +165,8 @@ TF = 0.0025 # TF = trading fee
 INCLUDE_TF = False  # flag if we want to include the TF in our calculations
 
 # SMA_WINDOWS = [9, 19, 29, 39, 49, 59, 69, 79, 89, 99] # most accurate if they're all odd integers
-SMA_WINDOWS = [9]#[50]#[10, 20, 30, 40, 50, 100, 200, 300, 400, 500] # most accurate if they're all odd integers
-TSL_VALUES = [0.05]#[0.0025, 0.005, 0.01, 0.025, 0.05, 0.10, 0.20]
+SMA_WINDOWS = [33]#[50]#[10, 20, 30, 40, 50, 100, 200, 300, 400, 500] # most accurate if they're all odd integers
+TSL_VALUES = [0.01]#[0.0025, 0.005, 0.01, 0.025, 0.05, 0.10, 0.20]
 
 # pprint constants
 DEBUG_WITH_CONSOLE = True
@@ -312,7 +316,7 @@ def get_sma_dct(dct, output_sma_data=False):
     total_ave_pct_with_trend = 0
 
     for i, coin in enumerate(COINS):
-        
+
         sma_dct = {}
 
         for j, w in enumerate(SMA_WINDOWS):
@@ -396,7 +400,7 @@ def plot_sma_data(dct):
 def plot_sma_data_helper(coin, price_series, sma_w_dct):
 
     fig, axes = plt.subplots(figsize=(11, 6))
-    
+
     axes.plot(price_series,  label='price')
     axes.plot(sma_w_dct['df']['sma'],   label=sma_w_dct['sma_label'])
     axes.plot(sma_w_dct['df']['trend'], label=sma_w_dct['trend_label'])
@@ -416,7 +420,7 @@ def plot_sma_data_helper(coin, price_series, sma_w_dct):
                 ranges_sma_with_trend.append((range_start, range_end))
                 range_start, range_end = None, None
             else:
-                pass # continue on ... 
+                pass # continue on ...
     for range_start, range_end in ranges_sma_with_trend:
         # we have to subtract one (as seen below)
         # b/c something to do with the plotting
@@ -557,7 +561,7 @@ def get_tsl_dct_helper(coin, w, x, price_series, verbose=False):
         else: # tracking short
 
             triggered = update_short_tsl(x, short_df, price, i, verbose=verbose)
-            
+
             if not triggered:
                 long_df.at[i, 'dxv']         = np.nan
                 long_df.at[i, 'stop_loss']   = np.nan
@@ -729,7 +733,7 @@ def plot_tsl_data_helper(date_labels, x_tick_indeces, coin, price_series, sma_w_
                     ranges_sma_direction.append((range_start, range_end))
                     range_start, range_end = None, None
                 else:
-                    pass # continue on ... 
+                    pass # continue on ...
         for range_start, range_end in ranges_sma_direction:
             ax[0].axvspan(range_start, range_end, color=color, alpha=0.5)
     highlight_sma_slope(up=True,  color='green')
@@ -787,7 +791,7 @@ def get_tsl_dct_from_csv_files(coin, df0, tsl_vals):
     }
     return dct
 
-# get investment data 
+# get investment data
 def get_investments(dct, output_investment_data=False):
 
     print('\nCalculating investment returns ...')
@@ -863,7 +867,7 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
             print(short_df.iloc[i])
 
         if sma_w_df.iloc[i]['sma_positive_slope']: # SMA has positive slope
-            
+
             if verbose: print('\nSMA slope is positive')
 
             # if invested long
@@ -902,10 +906,12 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
                     if verbose: print('short TSL triggered')
 
                     # exit short investment
-                    short_df.at[i, 'invested'] = False
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+                    invested_short = False
 
                     # enter long investment
-                    long_df.at[i, 'invested'] = True
+                    invested_long = True
+                    long_df.at[i, 'invested'] = invested_long
                     long_df = update_investment_returns(price, long_df, i, 'long')
 
                     if verbose: print('exitted short investment & entered long investment')
@@ -955,7 +961,7 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
 
                     # exit short investment
                     short_df = update_investment_returns(price, short_df, i, 'short')
-                    invested_short = True
+                    invested_short = False
 
                     if verbose: print('exitted short investment')
 
@@ -1008,7 +1014,8 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
                     if verbose: print('long TSL triggered')
 
                     # enter a short investment
-                    short_df.at[i, 'invested'] = True
+                    invested_short = True
+                    short_df.at[i, 'invested'] = invested_short
                     short_df = update_investment_returns(price, short_df, i, 'short')
 
                     if verbose: print('entered short investment')
@@ -1112,7 +1119,7 @@ def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series,
     fig, ax = plt.subplots(
         nrows=3, ncols=1,
         num='stop loss = %s' % (long_x_str),
-        figsize=(10.5, 6.5),
+        figsize=(10.75, 6.5),
         sharex=True, sharey=False)
 
     _legend_loc, _b2a = 'center left', (1, 0.5) # puts legend ouside plot
@@ -1146,7 +1153,7 @@ def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series,
                     ranges_sma_direction.append((range_start, range_end))
                     range_start, range_end = None, None
                 else:
-                    pass # continue on ... 
+                    pass # continue on ...
         for range_start, range_end in ranges_sma_direction:
             ax[0].axvspan(range_start, range_end, color=color, alpha=0.5)
     highlight_sma_slope(up=True,  color='green')
@@ -1163,8 +1170,11 @@ def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series,
     ax[1].set_xticklabels('')
     ax[1].yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0, decimals=1))
 
+    total_combined_sl_pl = long_df['tot_sl_pl'] + short_df['tot_sl_pl']
     ax[2].plot(long_df['tot_sl_pl'],  color='green', label='Total Long Stop Loss P/L')
     ax[2].plot(short_df['tot_sl_pl'], color='red',   label='Total Short Stop Loss P/L')
+    ax[2].plot(total_combined_sl_pl,  color='blue',  label='Total Combined Stop Loss P/L')
+    ax[2].plot()
     ax[2].legend(loc=_legend_loc, bbox_to_anchor=_b2a)
     ax[2].grid()
     # ax[2].yaxis.grid()  # draw horizontal lines
