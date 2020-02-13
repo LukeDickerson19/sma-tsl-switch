@@ -7,7 +7,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import pandas as pd
-MAX_ROWS = 1000
+MAX_ROWS = 10
 pd.set_option('display.max_rows', MAX_ROWS)
 pd.set_option('display.max_columns', 100)
 pd.set_option('display.width', 1000)
@@ -61,21 +61,6 @@ import numpy as np
 
     TO DO:
 
-        then update TSL plot to take up entire figure
-            unless theres anything else to plot at this stage???
-
-        why is cur PL going to -10 % sometimes
-            SMA_WINDOWS = [33]
-            TSL_VALUES = [0.01]
-
-            it might be better to draw the cur PL as just verticle bars
-                but I like seeing how it moooouuuoouuouououuvvves
-                    a green/red highlight could serve well hear
-                creating this verticle line could be a good way to verify the PL calculations are correct
-                each time its triggered:
-                    cur_actual_PL = +/- (stop_loss_value - enter_price) / enter_price
-                    tot_actual_PL += cur_actual_PL
-
         with the current const variables:
             we miss a large profit from a short
                 this is because the short TSL was tracking
@@ -87,6 +72,8 @@ import numpy as np
 
                         ... make it in a different version though
 
+        make test to verify that if you just switch back and forth between long and short tsl that it will take a loss
+            because thats what happened in reality
 
         then make backup_tsl_test2.py
             update description to explain different between first backup and 2nd
@@ -162,7 +149,7 @@ COINS = [
 COINS = ['ETH']
 PAIRS = [TETHER + '_' + coin for coin in COINS]
 TF = 0.0025 # TF = trading fee
-INCLUDE_TF = False  # flag if we want to include the TF in our calculations
+INCLUDE_TF = True  # flag if we want to include the TF in our calculations
 
 # SMA_WINDOWS = [9, 19, 29, 39, 49, 59, 69, 79, 89, 99] # most accurate if they're all odd integers
 SMA_WINDOWS = [33]#[50]#[10, 20, 30, 40, 50, 100, 200, 300, 400, 500] # most accurate if they're all odd integers
@@ -683,8 +670,8 @@ def plot_tsl_data(dct):
                     return
 def plot_tsl_data_helper(date_labels, x_tick_indeces, coin, price_series, sma_w_dct, x, tsl_x_dct):
 
-    long_x_str,  long_df  = '%s' % (100*x), tsl_x_dct['long_df']
-    short_x_str, short_df = '%s' % (100*x), tsl_x_dct['short_df']
+    long_x_str,  long_df  = '%.1f' % (100*x), tsl_x_dct['long_df']
+    short_x_str, short_df = '%.1f' % (100*x), tsl_x_dct['short_df']
 
     sma_data = sma_w_dct['df']['sma']
     sma_lbl  = '%s' % sma_w_dct['sma_label']
@@ -694,27 +681,26 @@ def plot_tsl_data_helper(date_labels, x_tick_indeces, coin, price_series, sma_w_
     bollinger_lower_bound = sma_w_dct['df']['bollinger_lower_bound']
 
     fig, ax = plt.subplots(
-        nrows=3, ncols=1,
-        num='stop loss = %s' % (long_x_str),
+        nrows=1, ncols=1,
+        num='stop loss = %s' % long_x_str,
         figsize=(10.5, 6.5),
         sharex=True, sharey=False)
 
     _legend_loc, _b2a = 'center left', (1, 0.5) # puts legend ouside plot
 
-    ax[0].plot(price_series,          color='black', label='price')
-    ax[0].plot(sma_data,              color='blue',  label=sma_lbl)
-    ax[0].plot(bollinger_upper_bound, color='blue',  label=bollinger_lbl, linestyle='--')
-    ax[0].plot(bollinger_lower_bound, color='blue',  label=None, linestyle='--')
-    # blink gym $15/month
-    ax[0].plot(long_df['stop_loss'],  color='green', label='%.1f %% long TSL ' % x)
-    ax[0].plot(short_df['stop_loss'], color='red',   label='%.1f %% short TSL ' % x)
-    ax[0].legend(loc=_legend_loc, bbox_to_anchor=_b2a)
-    ax[0].grid()
-    # ax[0].yaxis.grid()  # draw horizontal lines
-    ax[0].yaxis.set_zorder(-1.0)  # draw horizontal lines behind histogram bars
-    ax[0].set_title('Price, SMA, and TSL Chart')
-    ax[0].set_xticks(x_tick_indeces)
-    ax[0].set_xticklabels('')
+    ax.plot(price_series,          color='black', label='price')
+    # ax.plot(sma_data,              color='blue',  label=sma_lbl)
+    # ax.plot(bollinger_upper_bound, color='blue',  label=bollinger_lbl, linestyle='--')
+    # ax.plot(bollinger_lower_bound, color='blue',  label=None, linestyle='--')
+    ax.plot(long_df['stop_loss'],  color='green', label='%s%% long TSL ' % long_x_str)
+    ax.plot(short_df['stop_loss'], color='red',   label='%s%% short TSL ' % short_x_str)
+    ax.legend(loc=_legend_loc, bbox_to_anchor=_b2a)
+    ax.grid()
+    # ax.yaxis.grid()  # draw horizontal lines
+    ax.yaxis.set_zorder(-1.0)  # draw horizontal lines behind histogram bars
+    ax.set_title('TSL Chart')
+    ax.set_xticks(x_tick_indeces)
+    ax.set_xticklabels('')
 
     # highlight SMA slope + green
     # highlight SMA slope - red
@@ -735,38 +721,19 @@ def plot_tsl_data_helper(date_labels, x_tick_indeces, coin, price_series, sma_w_
                 else:
                     pass # continue on ...
         for range_start, range_end in ranges_sma_direction:
-            ax[0].axvspan(range_start, range_end, color=color, alpha=0.5)
+            ax.axvspan(range_start, range_end, color=color, alpha=0.5)
     highlight_sma_slope(up=True,  color='green')
     highlight_sma_slope(up=False, color='red')
 
-    # ax[1].plot(long_df['cur_price_pl'],  color='green', label='Long Current Stop Loss P/L')
-    # ax[1].plot(short_df['cur_price_pl'], color='red',   label='Short Current Stop Loss P/L')
-    # ax[1].legend(loc=_legend_loc, bbox_to_anchor=_b2a)
-    # ax[1].grid()
-    # # ax[1].yaxis.grid()  # draw horizontal lines
-    # # ax[1].yaxis.set_zorder(-1.0)  # draw horizontal lines behind histogram bars
-    # ax[1].set_title('Current TSL Profit/Loss')
-    # ax[1].set_xticks(x_tick_indeces)
-    # ax[1].set_xticklabels('')
-    # ax[1].yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0, decimals=1))
-
-    # ax[2].plot(long_df['tot_sl_pl'],  color='green', label='Total Long Stop Loss P/L')
-    # ax[2].plot(short_df['tot_sl_pl'], color='red',   label='Total Short Stop Loss P/L')
-    # ax[2].legend(loc=_legend_loc, bbox_to_anchor=_b2a)
-    # ax[2].grid()
-    # # ax[2].yaxis.grid()  # draw horizontal lines
-    # ax[2].yaxis.set_zorder(-1.0)  # draw horizontal lines behind histogram bars
-    # ax[2].set_title('Total TSL Profit/Loss')
-    # ax[2].set_xticks(x_tick_indeces)
-    # ax[2].set_xticklabels(date_labels, ha='right', rotation=45)  # x axis should show date_labeles
-    # ax[2].yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1.0, decimals=1))
+    ax.set_xticks(x_tick_indeces)
+    ax.set_xticklabels(date_labels, ha='right', rotation=45)  # x axis should show date_labeles
 
     # plt.tight_layout()
     fig.subplots_adjust(
-        right=0.75,
+        right=0.80,
         left=0.075,
         bottom=0.15,
-        top=0.95) # <-- Change the 0.02 to work for your plot.
+        top=0.95)
 
     plt.show()
 
@@ -1031,14 +998,14 @@ def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbos
             print()
             input()
 
-    print('AFTER')
-    print('MAX_ROWS = %d' % MAX_ROWS)
+    # print('AFTER')
+    # print('MAX_ROWS = %d' % MAX_ROWS)
 
-    print('\nlong df')
-    print(long_df)
-    print('\nshort_df')
-    print(short_df)
-    # input()
+    # print('\nlong df')
+    # print(long_df)
+    # print('\nshort_df')
+    # print(short_df)
+    # # input()
 
 
     return {
@@ -1050,17 +1017,14 @@ def update_investment_returns(price, df, i, investment_type):
     # update p/l variables
 
     tf = TF if INCLUDE_TF else 0
+    l_or_s = 1 if investment_type == 'long' else -1 # l_or_s = long or short
 
-    enter      = df.loc[i, 'enter_price'] * (1 + tf)
-    sl_exit    = df.loc[i, 'stop_loss']   * (1 - tf)
-    price_exit = price                    * (1 - tf)
+    enter      = df.loc[i, 'enter_price'] * (1 + l_or_s * tf)
+    sl_exit    = df.loc[i, 'stop_loss']   * (1 - l_or_s * tf)
+    price_exit = price                    * (1 - l_or_s * tf)
 
-    if investment_type == 'long':
-        df.at[i, 'cur_sl_pl']    =  (sl_exit    - enter) / enter
-        df.at[i, 'cur_price_pl'] =  (price_exit - enter) / enter
-    elif investment_type == 'short':
-        df.at[i, 'cur_sl_pl']    = -(sl_exit    - enter) / enter
-        df.at[i, 'cur_price_pl'] = -(price_exit - enter) / enter
+    df.at[i, 'cur_sl_pl']    = l_or_s * (sl_exit    - enter) / enter
+    df.at[i, 'cur_price_pl'] = l_or_s * (price_exit - enter) / enter
 
     return df
 def update_portfolio_returns(df, i):
@@ -1110,15 +1074,15 @@ def plot_investment_data(dct):
                     return
 def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series, sma_w_dct, x, tsl_x_dct):
 
-    long_x_str,  long_df  = '%s' % (100*x), tsl_x_dct['long_df']
-    short_x_str, short_df = '%s' % (100*x), tsl_x_dct['short_df']
+    long_x_str,  long_df  = '%.1f' % (100*x), tsl_x_dct['long_df']
+    short_x_str, short_df = '%.1f' % (100*x), tsl_x_dct['short_df']
 
     sma_data = sma_w_dct['df']['sma']
     sma_lbl  = '%s' % sma_w_dct['sma_label']
 
     fig, ax = plt.subplots(
         nrows=3, ncols=1,
-        num='stop loss = %s' % (long_x_str),
+        num='stop loss = %s' % long_x_str,
         figsize=(10.75, 6.5),
         sharex=True, sharey=False)
 
@@ -1126,8 +1090,8 @@ def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series,
 
     ax[0].plot(price_series,          color='black', label='price')
     # ax[0].plot(sma_data,              color='blue',  label=sma_lbl)
-    ax[0].plot(long_df['stop_loss'],  color='green', label='%.1f %% long TSL ' % x)
-    ax[0].plot(short_df['stop_loss'], color='red',   label='%.1f %% short TSL ' % x)
+    ax[0].plot(long_df['stop_loss'],  color='green', label='%s%% long TSL ' % long_x_str)
+    ax[0].plot(short_df['stop_loss'], color='red',   label='%s%% short TSL ' % short_x_str)
     ax[0].legend(loc=_legend_loc, bbox_to_anchor=_b2a)
     ax[0].grid()
     # ax[0].yaxis.grid()  # draw horizontal lines
@@ -1159,8 +1123,12 @@ def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series,
     highlight_sma_slope(up=True,  color='green')
     highlight_sma_slope(up=False, color='red')
 
-    ax[1].plot(long_df['cur_price_pl'],  color='green', label='Long Current Stop Loss P/L')
-    ax[1].plot(short_df['cur_price_pl'], color='red',   label='Short Current Stop Loss P/L')
+    ax[1].plot(long_df['cur_sl_pl'],  color='green', label='Long Current Stop Loss P/L')
+    ax[1].plot(short_df['cur_sl_pl'], color='red',   label='Short Current Stop Loss P/L')
+    ''' Notes:
+        cur_sl_pl was used instead of cur_price_pl because the sl will be triggered
+        before the price reaches a value lower/higher than the stop loss
+        '''
     ax[1].legend(loc=_legend_loc, bbox_to_anchor=_b2a)
     ax[1].grid()
     # ax[1].yaxis.grid()  # draw horizontal lines
