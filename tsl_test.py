@@ -61,6 +61,9 @@ import numpy as np
 
     TO DO:
 
+        make test to verify that if you just switch back and forth between long and short tsl that it will take a loss
+            because thats what happened in reality
+
         with the current const variables:
             we miss a large profit from a short
                 this is because the short TSL was tracking
@@ -71,9 +74,6 @@ import numpy as np
                     way it gets triggered if theres a really long short
 
                         ... make it in a different version though
-
-        make test to verify that if you just switch back and forth between long and short tsl that it will take a loss
-            because thats what happened in reality
 
         then make backup_tsl_test2.py
             update description to explain different between first backup and 2nd
@@ -777,7 +777,7 @@ def get_investments(dct, output_investment_data=False):
 
             tsl_dct = {}
             for k, (x, tsl_x_dct) in enumerate(sma_w_dct['tsl_dct'].items()):
-                tsl_x_dct = get_investments_helper(
+                tsl_x_dct = get_investments_helper1(
                     coin, w, x, price_df['price'], sma_w_df, tsl_x_dct, verbose=False)
                 tsl_dct[x] = tsl_x_dct
 
@@ -791,7 +791,676 @@ def get_investments(dct, output_investment_data=False):
         plot_investment_data(dct)
 
     return dct
-def get_investments_helper(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False):
+def get_investments_helper1(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False):
+
+    ''' NOTE:
+        This investment helper just constantly goes long and short for both TSL.
+        All tracking gets an investment.
+        In reality this would probably require 2 separate accounts trading simultaniously.
+        '''
+
+    long_df, short_df = tsl_x_dct['long_df'], tsl_x_dct['short_df']
+    invested_long, invested_short = False, False
+
+    # init the 1st w 'invested' flags to false, and the 1st w 'tot_sl_pl' and 'tot_price_pl' to 0
+    long_df['invested'][:w]      = False
+    long_df['tot_sl_pl'][:w]     = 0.0
+    long_df['tot_price_pl'][:w]  = 0.0
+    short_df['invested'][:w]     = False
+    short_df['tot_sl_pl'][:w]    = 0.0
+    short_df['tot_price_pl'][:w] = 0.0
+
+    # print('BEFORE')
+
+    # print('\nlong df')
+    # print(long_df)
+    # print('\nshort_df')
+    # print(short_df)
+    # input()
+
+    # print(price_series)
+
+    # iterate over the price data but start at w-1+1
+    # -1 b/c 0 indexing, +1 b/c we want to start when we have an SMA slope to work w/
+    for i, price in price_series.iloc[w-1+1:].items():
+
+        # set investment status at i equal to what it was at i-1
+        long_df.at[i,  'invested'] = invested_long
+        short_df.at[i, 'invested'] = invested_short
+        # long_df.at[i,  'invested'] = long_df.at[i-1,  'invested']
+        # short_df.at[i, 'invested'] = short_df.at[i-1, 'invested']
+
+        if verbose:
+            print('-' * 100)
+            print('i = %d   price = %.4f\n' % (i, price))
+            print(sma_w_df.iloc[i])
+            print('\nlong_df.iloc[%d]' % i)
+            print(long_df.iloc[i])
+            print('\nshort_df.iloc[%d]' % i)
+            print(short_df.iloc[i])
+
+        if sma_w_df.iloc[i]['sma_positive_slope']: # SMA has positive slope
+
+            if verbose: print('\nSMA slope is positive')
+
+            # if invested long
+            if long_df.at[i, 'invested']:
+
+                if verbose: print('invested long')
+
+                # if long TSL triggered
+                if long_df.at[i, 'triggered']:
+
+                    if verbose: print('long TSL triggered')
+
+                    # exit long investment
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+                    invested_long = False
+
+                    if verbose: print('exitted long investment')
+
+                else: # else long TSL wasn't triggered
+
+                    if verbose: print('long TSL not triggered')
+
+                    # update long investment
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+
+                    if verbose: print('long investment updated')
+
+            # elif invested short (for corner case: SMA is still catching up to trend shift):
+            elif short_df.at[i, 'invested']:
+
+                if verbose: print('invested short: SMA is still catching up to trend shift')
+
+                # if short TSL triggered:
+                if short_df.at[i, 'triggered']:
+
+                    if verbose: print('short TSL triggered')
+
+                    # exit short investment
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+                    invested_short = False
+
+                    # enter long investment
+                    invested_long = True
+                    long_df.at[i, 'invested'] = invested_long
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+
+                    if verbose: print('exitted short investment & entered long investment')
+
+                else: # else short TSL not triggered
+
+                    if verbose: print('short TSL not triggered')
+
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+
+                    if verbose: print('updated short investment')
+
+            # else not invested long or short
+            else:
+
+                if verbose: print('not invested long')
+
+                # if short TSL is triggered
+                if short_df.at[i, 'triggered']:
+
+                    if verbose: print('short TSL triggered')
+
+                    # enter a long investment
+                    invested_long = True
+                    long_df.at[i, 'invested'] = invested_long
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+
+                    if verbose: print('entered long investment')
+
+                else:
+
+                    if verbose: print('short TSL not triggered')
+
+        else: # SMA has negative slope
+
+            if verbose: print('\nSMA slope is negative')
+
+            # if invested short
+            if short_df.at[i, 'invested']:
+
+                if verbose: print('invested short')
+
+                # if short TSL triggered
+                if short_df.at[i, 'triggered']:
+
+                    if verbose: print('short TSL triggered')
+
+                    # exit short investment
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+                    invested_short = False
+
+                    if verbose: print('exitted short investment')
+
+                else: # else short TSL wasn't triggered
+
+                    if verbose: print('short TSL not triggered')
+
+                    # update short investment
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+
+                    if verbose: print('short investment updated')
+
+            # elif invested long (for corner case: SMA is still catching up to trend shift):
+            elif long_df.at[i, 'invested']:
+
+                if verbose: print('invested long: SMA is still catching up to trend shift')
+
+                # if long TSL triggered:
+                if long_df.at[i, 'triggered']:
+
+                    if verbose: print('long TSL triggered')
+
+                    # exit long investment
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+                    invested_long = False
+
+                    # enter short investment
+                    invested_short = True
+                    short_df.at[i, 'invested'] = invested_short
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+
+                    if verbose: print('exitted long investment & entered short investment')
+
+                else: # else long TSL not triggered
+
+                    if verbose: print('long TSL not triggered')
+
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+
+                    if verbose: print('updated long investment')
+
+            # else not invested short or long
+            else:
+
+                if verbose: print('not invested short')
+
+                # if long TSL is triggered
+                if long_df.at[i, 'triggered']:
+
+                    if verbose: print('long TSL triggered')
+
+                    # enter a short investment
+                    invested_short = True
+                    short_df.at[i, 'invested'] = invested_short
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+
+                    if verbose: print('entered short investment')
+
+                else:
+
+                    if verbose: print('long TSL not triggered')
+
+        long_df  = update_portfolio_returns(long_df,  i)
+        short_df = update_portfolio_returns(short_df, i)
+
+        if verbose:
+            print()
+            input()
+
+    # print('AFTER')
+    # print('MAX_ROWS = %d' % MAX_ROWS)
+
+    # print('\nlong df')
+    # print(long_df)
+    # print('\nshort_df')
+    # print(short_df)
+    # # input()
+
+
+    return {
+        'long_df'  : long_df,
+        'short_df' : short_df
+    }
+def get_investments_helper2(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False):
+
+    long_df, short_df = tsl_x_dct['long_df'], tsl_x_dct['short_df']
+    invested_long, invested_short = False, False
+
+    # init the 1st w 'invested' flags to false, and the 1st w 'tot_sl_pl' and 'tot_price_pl' to 0
+    long_df['invested'][:w]      = False
+    long_df['tot_sl_pl'][:w]     = 0.0
+    long_df['tot_price_pl'][:w]  = 0.0
+    short_df['invested'][:w]     = False
+    short_df['tot_sl_pl'][:w]    = 0.0
+    short_df['tot_price_pl'][:w] = 0.0
+
+    # print('BEFORE')
+
+    # print('\nlong df')
+    # print(long_df)
+    # print('\nshort_df')
+    # print(short_df)
+    # input()
+
+    # print(price_series)
+
+    # iterate over the price data but start at w-1+1
+    # -1 b/c 0 indexing, +1 b/c we want to start when we have an SMA slope to work w/
+    for i, price in price_series.iloc[w-1+1:].items():
+
+        # set investment status at i equal to what it was at i-1
+        long_df.at[i,  'invested'] = invested_long
+        short_df.at[i, 'invested'] = invested_short
+        # long_df.at[i,  'invested'] = long_df.at[i-1,  'invested']
+        # short_df.at[i, 'invested'] = short_df.at[i-1, 'invested']
+
+        if verbose:
+            print('-' * 100)
+            print('i = %d   price = %.4f\n' % (i, price))
+            print(sma_w_df.iloc[i])
+            print('\nlong_df.iloc[%d]' % i)
+            print(long_df.iloc[i])
+            print('\nshort_df.iloc[%d]' % i)
+            print(short_df.iloc[i])
+
+        if sma_w_df.iloc[i]['sma_positive_slope']: # SMA has positive slope
+
+            if verbose: print('\nSMA slope is positive')
+
+            # if invested long
+            if long_df.at[i, 'invested']:
+
+                if verbose: print('invested long')
+
+                # if long TSL triggered
+                if long_df.at[i, 'triggered']:
+
+                    if verbose: print('long TSL triggered')
+
+                    # exit long investment
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+                    invested_long = False
+
+                    if verbose: print('exitted long investment')
+
+                else: # else long TSL wasn't triggered
+
+                    if verbose: print('long TSL not triggered')
+
+                    # update long investment
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+
+                    if verbose: print('long investment updated')
+
+            # elif invested short (for corner case: SMA is still catching up to trend shift):
+            elif short_df.at[i, 'invested']:
+
+                if verbose: print('invested short: SMA is still catching up to trend shift')
+
+                # if short TSL triggered:
+                if short_df.at[i, 'triggered']:
+
+                    if verbose: print('short TSL triggered')
+
+                    # exit short investment
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+                    invested_short = False
+
+                    # enter long investment
+                    invested_long = True
+                    long_df.at[i, 'invested'] = invested_long
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+
+                    if verbose: print('exitted short investment & entered long investment')
+
+                else: # else short TSL not triggered
+
+                    if verbose: print('short TSL not triggered')
+
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+
+                    if verbose: print('updated short investment')
+
+            # else not invested long or short
+            else:
+
+                if verbose: print('not invested long')
+
+                # if short TSL is triggered
+                if short_df.at[i, 'triggered']:
+
+                    if verbose: print('short TSL triggered')
+
+                    # enter a long investment
+                    invested_long = True
+                    long_df.at[i, 'invested'] = invested_long
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+
+                    if verbose: print('entered long investment')
+
+                else:
+
+                    if verbose: print('short TSL not triggered')
+
+        else: # SMA has negative slope
+
+            if verbose: print('\nSMA slope is negative')
+
+            # if invested short
+            if short_df.at[i, 'invested']:
+
+                if verbose: print('invested short')
+
+                # if short TSL triggered
+                if short_df.at[i, 'triggered']:
+
+                    if verbose: print('short TSL triggered')
+
+                    # exit short investment
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+                    invested_short = False
+
+                    if verbose: print('exitted short investment')
+
+                else: # else short TSL wasn't triggered
+
+                    if verbose: print('short TSL not triggered')
+
+                    # update short investment
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+
+                    if verbose: print('short investment updated')
+
+            # elif invested long (for corner case: SMA is still catching up to trend shift):
+            elif long_df.at[i, 'invested']:
+
+                if verbose: print('invested long: SMA is still catching up to trend shift')
+
+                # if long TSL triggered:
+                if long_df.at[i, 'triggered']:
+
+                    if verbose: print('long TSL triggered')
+
+                    # exit long investment
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+                    invested_long = False
+
+                    # enter short investment
+                    invested_short = True
+                    short_df.at[i, 'invested'] = invested_short
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+
+                    if verbose: print('exitted long investment & entered short investment')
+
+                else: # else long TSL not triggered
+
+                    if verbose: print('long TSL not triggered')
+
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+
+                    if verbose: print('updated long investment')
+
+            # else not invested short or long
+            else:
+
+                if verbose: print('not invested short')
+
+                # if long TSL is triggered
+                if long_df.at[i, 'triggered']:
+
+                    if verbose: print('long TSL triggered')
+
+                    # enter a short investment
+                    invested_short = True
+                    short_df.at[i, 'invested'] = invested_short
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+
+                    if verbose: print('entered short investment')
+
+                else:
+
+                    if verbose: print('long TSL not triggered')
+
+        long_df  = update_portfolio_returns(long_df,  i)
+        short_df = update_portfolio_returns(short_df, i)
+
+        if verbose:
+            print()
+            input()
+
+    # print('AFTER')
+    # print('MAX_ROWS = %d' % MAX_ROWS)
+
+    # print('\nlong df')
+    # print(long_df)
+    # print('\nshort_df')
+    # print(short_df)
+    # # input()
+
+
+    return {
+        'long_df'  : long_df,
+        'short_df' : short_df
+    }
+def get_investments_helper3(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False):
+
+    long_df, short_df = tsl_x_dct['long_df'], tsl_x_dct['short_df']
+    invested_long, invested_short = False, False
+
+    # init the 1st w 'invested' flags to false, and the 1st w 'tot_sl_pl' and 'tot_price_pl' to 0
+    long_df['invested'][:w]      = False
+    long_df['tot_sl_pl'][:w]     = 0.0
+    long_df['tot_price_pl'][:w]  = 0.0
+    short_df['invested'][:w]     = False
+    short_df['tot_sl_pl'][:w]    = 0.0
+    short_df['tot_price_pl'][:w] = 0.0
+
+    # print('BEFORE')
+
+    # print('\nlong df')
+    # print(long_df)
+    # print('\nshort_df')
+    # print(short_df)
+    # input()
+
+    # print(price_series)
+
+    # iterate over the price data but start at w-1+1
+    # -1 b/c 0 indexing, +1 b/c we want to start when we have an SMA slope to work w/
+    for i, price in price_series.iloc[w-1+1:].items():
+
+        # set investment status at i equal to what it was at i-1
+        long_df.at[i,  'invested'] = invested_long
+        short_df.at[i, 'invested'] = invested_short
+        # long_df.at[i,  'invested'] = long_df.at[i-1,  'invested']
+        # short_df.at[i, 'invested'] = short_df.at[i-1, 'invested']
+
+        if verbose:
+            print('-' * 100)
+            print('i = %d   price = %.4f\n' % (i, price))
+            print(sma_w_df.iloc[i])
+            print('\nlong_df.iloc[%d]' % i)
+            print(long_df.iloc[i])
+            print('\nshort_df.iloc[%d]' % i)
+            print(short_df.iloc[i])
+
+        if sma_w_df.iloc[i]['sma_positive_slope']: # SMA has positive slope
+
+            if verbose: print('\nSMA slope is positive')
+
+            # if invested long
+            if long_df.at[i, 'invested']:
+
+                if verbose: print('invested long')
+
+                # if long TSL triggered
+                if long_df.at[i, 'triggered']:
+
+                    if verbose: print('long TSL triggered')
+
+                    # exit long investment
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+                    invested_long = False
+
+                    if verbose: print('exitted long investment')
+
+                else: # else long TSL wasn't triggered
+
+                    if verbose: print('long TSL not triggered')
+
+                    # update long investment
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+
+                    if verbose: print('long investment updated')
+
+            # elif invested short (for corner case: SMA is still catching up to trend shift):
+            elif short_df.at[i, 'invested']:
+
+                if verbose: print('invested short: SMA is still catching up to trend shift')
+
+                # if short TSL triggered:
+                if short_df.at[i, 'triggered']:
+
+                    if verbose: print('short TSL triggered')
+
+                    # exit short investment
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+                    invested_short = False
+
+                    # enter long investment
+                    invested_long = True
+                    long_df.at[i, 'invested'] = invested_long
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+
+                    if verbose: print('exitted short investment & entered long investment')
+
+                else: # else short TSL not triggered
+
+                    if verbose: print('short TSL not triggered')
+
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+
+                    if verbose: print('updated short investment')
+
+            # else not invested long or short
+            else:
+
+                if verbose: print('not invested long')
+
+                # if short TSL is triggered
+                if short_df.at[i, 'triggered']:
+
+                    if verbose: print('short TSL triggered')
+
+                    # enter a long investment
+                    invested_long = True
+                    long_df.at[i, 'invested'] = invested_long
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+
+                    if verbose: print('entered long investment')
+
+                else:
+
+                    if verbose: print('short TSL not triggered')
+
+        else: # SMA has negative slope
+
+            if verbose: print('\nSMA slope is negative')
+
+            # if invested short
+            if short_df.at[i, 'invested']:
+
+                if verbose: print('invested short')
+
+                # if short TSL triggered
+                if short_df.at[i, 'triggered']:
+
+                    if verbose: print('short TSL triggered')
+
+                    # exit short investment
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+                    invested_short = False
+
+                    if verbose: print('exitted short investment')
+
+                else: # else short TSL wasn't triggered
+
+                    if verbose: print('short TSL not triggered')
+
+                    # update short investment
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+
+                    if verbose: print('short investment updated')
+
+            # elif invested long (for corner case: SMA is still catching up to trend shift):
+            elif long_df.at[i, 'invested']:
+
+                if verbose: print('invested long: SMA is still catching up to trend shift')
+
+                # if long TSL triggered:
+                if long_df.at[i, 'triggered']:
+
+                    if verbose: print('long TSL triggered')
+
+                    # exit long investment
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+                    invested_long = False
+
+                    # enter short investment
+                    invested_short = True
+                    short_df.at[i, 'invested'] = invested_short
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+
+                    if verbose: print('exitted long investment & entered short investment')
+
+                else: # else long TSL not triggered
+
+                    if verbose: print('long TSL not triggered')
+
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+
+                    if verbose: print('updated long investment')
+
+            # else not invested short or long
+            else:
+
+                if verbose: print('not invested short')
+
+                # if long TSL is triggered
+                if long_df.at[i, 'triggered']:
+
+                    if verbose: print('long TSL triggered')
+
+                    # enter a short investment
+                    invested_short = True
+                    short_df.at[i, 'invested'] = invested_short
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+
+                    if verbose: print('entered short investment')
+
+                else:
+
+                    if verbose: print('long TSL not triggered')
+
+        long_df  = update_portfolio_returns(long_df,  i)
+        short_df = update_portfolio_returns(short_df, i)
+
+        if verbose:
+            print()
+            input()
+
+    # print('AFTER')
+    # print('MAX_ROWS = %d' % MAX_ROWS)
+
+    # print('\nlong df')
+    # print(long_df)
+    # print('\nshort_df')
+    # print(short_df)
+    # # input()
+
+
+    return {
+        'long_df'  : long_df,
+        'short_df' : short_df
+    }
+def get_investments_helper4(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False):
 
     long_df, short_df = tsl_x_dct['long_df'], tsl_x_dct['short_df']
     invested_long, invested_short = False, False
