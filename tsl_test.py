@@ -62,7 +62,9 @@ import numpy as np
     TO DO:
 
         make test to verify that if you just switch back and forth between long and short tsl that it will take a loss
-            because thats what happened in reality
+            
+            investment_helper 1, 2, 4
+            tsl_dct_helper 2
 
         with the current const variables:
             we miss a large profit from a short
@@ -81,7 +83,7 @@ import numpy as np
                 2nd backup has tsls switching back and forth
 
         then make it so that investments are made in tandem with the sma
-            and explain the different between the tests
+            and explain the difference between the tests
 
     IDEA:
 
@@ -483,7 +485,7 @@ def get_tsl_dct(dct, output_tsl_data=False):
             tsl_dct = {}
             for x in TSL_VALUES:
                 # print('x = %.2f' % x)
-                tsl_x_dct = get_tsl_dct_helper(coin, w, x, price_df['price'])
+                tsl_x_dct = get_tsl_dct_helper1(coin, w, x, price_df['price'])
                 tsl_dct[x] = tsl_x_dct
 
             dct['asset_dct'][coin]['sma_dct'][w]['tsl_dct'] = tsl_dct
@@ -497,7 +499,83 @@ def get_tsl_dct(dct, output_tsl_data=False):
         plot_tsl_data(dct)
 
     return dct
-def get_tsl_dct_helper(coin, w, x, price_series, verbose=False):
+def get_tsl_dct_helper1(coin, w, x, price_series, verbose=False):
+
+    columns = {
+        'enter_price',   # the price that the trade was entered at
+        'stop_loss',     # the price that it will take to exit the trade
+        'dxv',           # dxv = dx VALUE (not the percentage), aka difference between enter_price and stop_loss
+        'cur_price_pl',  # profit/loss (pl) of the current actual price
+        'cur_sl_pl',     # profit/loss (pl) of the current stop loss
+        'tot_price_pl',  # profit/loss (pl) of the total (from beginning until now) of the current price
+        'tot_sl_pl',     # profit/loss (pl) of the total (from beginning until now) of the current stop loss
+        'active',        # boolean flag if the TSL exists or not
+        'triggered',     # boolean flag if the TSL has been triggered or not
+        'invested'       # boolean flag if the algorithm is invested long/short
+    }
+    long_df = pd.DataFrame(columns=columns)
+    short_df = pd.DataFrame(columns=columns)
+
+    # init boolean flags to False (except 'invested' b/c its more readable to update incrementally)
+    long_df['active'],    short_df['active']    = False, False
+    long_df['triggered'], short_df['triggered'] = False, False
+    # long_df['invested'],  short_df['invested']  = False, False
+
+    tracking_long = True
+    for i, price in enumerate(price_series):
+
+        if verbose:
+            print('-' * 100)
+            print('i = %d   price = %.4f' % (i, price))
+            print('TRACKING LONG' if tracking_long else 'TRACKING SHORT')
+
+        # if your tracking long, update the long function 1st and the short tsl 2nd, and vice versa
+        if tracking_long:
+
+            # update long tsl 1st
+            triggered = update_long_tsl(x, long_df, price, i, init_tsl=i==0, verbose=verbose)
+
+            # then update the short tsl 2nd
+            if not triggered:
+                short_df.at[i, 'dxv']         = np.nan
+                short_df.at[i, 'stop_loss']   = np.nan
+                short_df.at[i, 'enter_price'] = np.nan
+                short_df.at[i, 'triggered']   = False
+                short_df.at[i, 'active']      = False
+
+            else: # if the long tsl was triggered, start tracking short
+                tracking_long = False
+                _ = update_short_tsl(x, short_df, price, i, init_tsl=True, verbose=verbose)
+
+        else: # tracking short
+
+            triggered = update_short_tsl(x, short_df, price, i, verbose=verbose)
+
+            if not triggered:
+                long_df.at[i, 'dxv']         = np.nan
+                long_df.at[i, 'stop_loss']   = np.nan
+                long_df.at[i, 'enter_price'] = np.nan
+                long_df.at[i, 'triggered']   = False
+                long_df.at[i, 'active']      = False
+
+            else: # if the short tsl was triggered, start tracking long
+                tracking_long = True
+                _ = update_long_tsl(x, long_df, price, i, init_tsl=True, verbose=verbose)
+
+        if verbose:
+            print('\nlong_df')
+            print(long_df)
+
+            print('\nshort_df')
+            print(short_df)
+
+        # input()
+
+    return {
+        'long_df'  : long_df,
+        'short_df' : short_df
+    }
+def get_tsl_dct_helper2(coin, w, x, price_series, verbose=False):
 
     columns = {
         'enter_price',   # the price that the trade was entered at
@@ -797,6 +875,8 @@ def get_investments_helper1(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
         This investment helper just constantly goes long and short for both TSL.
         All tracking gets an investment.
         In reality this would probably require 2 separate accounts trading simultaniously.
+
+        This requires the use of: get_tsl_dct_helper1().
         '''
 
     long_df, short_df = tsl_x_dct['long_df'], tsl_x_dct['short_df']
@@ -1020,6 +1100,13 @@ def get_investments_helper1(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
     }
 def get_investments_helper2(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False):
 
+    ''' NOTE:
+        This investment helper switches back and forth between long and short TSLs
+        regardless of SMA. All tracking gets an investment.
+
+        This requires the use of: get_tsl_dct_helper1().
+        '''
+
     long_df, short_df = tsl_x_dct['long_df'], tsl_x_dct['short_df']
     invested_long, invested_short = False, False
 
@@ -1241,6 +1328,16 @@ def get_investments_helper2(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
     }
 def get_investments_helper3(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False):
 
+    ''' NOTE:
+        This investment helper switches back and forth between long and short TSLs.
+        If SMA slope is positive it can only go long.
+        If SMA slope is negative it can only go short.
+        When the SMA slope switches, for example, postive to negative, if the
+        algo is already tracking a short TSL, it will not invest short.
+
+        This requires the use of: get_tsl_dct_helper1().
+        '''
+
     long_df, short_df = tsl_x_dct['long_df'], tsl_x_dct['short_df']
     invested_long, invested_short = False, False
 
@@ -1461,6 +1558,18 @@ def get_investments_helper3(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
         'short_df' : short_df
     }
 def get_investments_helper4(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False):
+
+    ''' NOTE:
+        This investment helper switches back and forth between long and short TSLs.
+        If SMA slope is positive it can only go long.
+        If SMA slope is negative it can only go short.
+        When the SMA slope switches, for example, postive to negative, if the
+        algo is already tracking a short TSL, it will switch to tracking long
+        and if the long TSL is triggered, a short TSL will start tracking
+        WITH and investment as well.
+
+        This requires the use of: get_tsl_dct_helper2().
+        '''
 
     long_df, short_df = tsl_x_dct['long_df'], tsl_x_dct['short_df']
     invested_long, invested_short = False, False
