@@ -120,6 +120,13 @@ import numpy as np
 
     IDEA:
 
+        for each window length back into time
+        if there is a consistent level of volitility (aka std dev has low volitility (aka the std dev of the std dev))
+        and there is a consistent slope (aka avg slope over a smaller window within this window is conistent (aka it has a low std dev))
+            how long is it likely for this pattern of volitility and slope to continue?
+            especially if the pattern is occuring withing a larger pattern that is with or against this micro pattern
+
+            ... would be useful to test this one with 5 min data over maybe a month
 
         In the market there are people with different sized portfolios
         If someone who has large portolio goes long on an asset
@@ -182,13 +189,13 @@ COINS = [
     'DASH',
     'ETC',
 ]
-COINS = ['ETH']
+COINS = ['BTC']
 PAIRS = [TETHER + '_' + coin for coin in COINS]
 TF = 0.0025 # TF = trading fee
 INCLUDE_TF = True  # flag if we want to include the TF in our calculations
 
 # SMA_WINDOWS = [9, 19, 29, 39, 49, 59, 69, 79, 89, 99] # most accurate if they're all odd integers
-SMA_WINDOWS = [99]#[50]#[10, 20, 30, 40, 50, 100, 200, 300, 400, 500] # most accurate if they're all odd integers
+SMA_WINDOWS = [100]#[50]#[10, 20, 30, 40, 50, 100, 200, 300, 400, 500] # most accurate if they're all odd integers
 TSL_VALUES = [0.01]#[0.0025, 0.005, 0.01, 0.025, 0.05, 0.10, 0.20]
 
 # pprint constants
