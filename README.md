@@ -9,7 +9,7 @@ https://www.investopedia.com/ask/answers/06/parabolicsar.asp
 
 #### Results:
 
-The backtest results say the strategy has a 15x annual return trading ETH/USDT with a TSL value of 1.0 % and an SMA window of 99 2 hr intervals. The other cryptos have similar but I think this is too good to be true. I've been looking into the way I'm calculating profits and it seems to be accurate though. It currently calculates profits with percentages. Next steps are to redo the profit calculations with fake USDT instead of percentages to see if it changes the annual profits.
+The backtest results say the strategy has a 3x annual return trading BTC/USDT with a TSL value of 1.0 % and an SMA window of 100 2 hr timesteps. The other cryptos have similar returns. I think this is too good to be true, but I've been looking into the way I'm calculating profits and it seems to be accurate. It currently calculates profits with percentages. Next steps are to redo the profit calculations with fake USDT instead of percentages to see if it changes the annual profits.
 
 
 ![results](https://github.com/PopeyedLocket/sma-tsl-switch/blob/master/images/asset-BTC_x-1_w-100.png?raw=true "Results")
