@@ -41,7 +41,7 @@ import numpy as np
 
 # constants
 QUERI_POLONIEX = False
-BACKTEST_DATA_FILE = './price_data_multiple_coins-BTC_ETH_XRP_LTC_ZEC_XMR_STR_DASH_ETC-2hr_intervals-08_01_2018_7am_to_08_01_2019_4am.csv'
+BACKTEST_DATA_FILE = './data/price_data/price_data_multiple_coins-BTC_ETH_XRP_LTC_ZEC_XMR_STR_DASH_ETC-2hr_intervals-08_01_2018_7am_to_08_01_2019_4am.csv'
 LONG_TSLS_FILES = './data/long/'
 SHORT_TSLS_FILES = './data/short/'
 TETHER = 'USDT'
