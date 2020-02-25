@@ -19,7 +19,7 @@ import numpy as np
 
 # constants
 QUERI_POLONIEX = False
-CALCULATE_TSL_DATA = True
+CALCULATE_TSL_DATA = False
 BACKTEST_DATA_FILE = '../data/price_data/price_data_multiple_coins-BTC_ETH_XRP_LTC_ZEC_XMR_STR_DASH_ETC-2hr_intervals-08_01_2018_7am_to_08_01_2019_4am.csv'
 # BACKTEST_DATA_FILE = '../data/price_data/price_data_one_coin-BTC_USD-5min_intervals-ONE_QUARTER-11-21-2019-12am_to_02-21-2020-12am.csv'
 BACKTEST_DATA_FILE2 = '../../tsls/sma_switch1/data/price_data.csv'
