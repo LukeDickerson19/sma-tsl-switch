@@ -19,9 +19,9 @@ import numpy as np
 
 # constants
 QUERI_POLONIEX = False
-CALCULATE_TSL_DATA = False
+CALCULATE_TSL_DATA = True
 BACKTEST_DATA_FILE = '../data/price_data/price_data_multiple_coins-BTC_ETH_XRP_LTC_ZEC_XMR_STR_DASH_ETC-2hr_intervals-08_01_2018_7am_to_08_01_2019_4am.csv'
-BACKTEST_DATA_FILE = '../data/price_data/price_data_one_coin-BTC_USD-5min_intervals-ONE_QUARTER-11-21-2019-12am_to_02-21-2020-12am.csv'
+# BACKTEST_DATA_FILE = '../data/price_data/price_data_one_coin-BTC_USD-5min_intervals-ONE_QUARTER-11-21-2019-12am_to_02-21-2020-12am.csv'
 BACKTEST_DATA_FILE2 = '../../tsls/sma_switch1/data/price_data.csv'
 LONG_TSLS_FILES = './data/long/'
 SHORT_TSLS_FILES = './data/short/'
@@ -43,8 +43,8 @@ TF = 0.0025 # TF = trading fee
 INCLUDE_TF = True  # flag if we want to include the TF in our calculations
 
 # SMA_WINDOWS = [9, 19, 29, 39, 49, 59, 69, 79, 89, 99] # most accurate if they're all odd integers
-SMA_WINDOWS = [1000]#[50]#[10, 20, 30, 40, 50, 100, 200, 300, 400, 500] # most accurate if they're all odd integers
-TSL_VALUES = [0.0025]#[0.0025, 0.005, 0.01, 0.025, 0.05, 0.10, 0.20]
+SMA_WINDOWS = [100]#[50]#[10, 20, 30, 40, 50, 100, 200, 300, 400, 500] # most accurate if they're all odd integers
+TSL_VALUES = [0.01]#[0.0025, 0.005, 0.01, 0.025, 0.05, 0.10, 0.20]
 
 # pprint constants
 DEBUG_WITH_CONSOLE = True
@@ -400,7 +400,6 @@ def get_tsl_dct(dct, output_tsl_data=False, save_tsl_data=True):
 
     if save_tsl_data:
         base_path = '../data/tsl_data/'
-        subprocess.run(['rm', '-rf', base_path]) # clear old data
         subprocess.run(['mkdir', base_path])
         for coin in COINS:
             subprocess.run(['mkdir', base_path + 'asset_%s/' % (coin)])
