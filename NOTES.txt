@@ -1,0 +1,155 @@
+
+
+STRATEGY DESCRIPTION:
+
+    Switch back and forth between a long and short TSL (just tracking, no investment).
+    When SMA is going up, invest in the long TSL,
+    and when SMA is going down invest in the short TSL.
+
+EXPERIMENT DESCRIPTION:
+
+    for each coin in COINS:
+        for each sma window length w in SMA_WINDOWS:
+
+            high-light when the sma is + slope and when its - slope
+                + is green
+                - is red
+
+            for each TSL value (percent offset from current price) x in TSL_VALUES:
+
+                determine the p/l for each section of the SMA trend (when it is with it, and when it is against it)
+
+                    when the sma trend direction switches we have no idea how long its going to stay in this direction
+                        if we don't invest in the beginning when it lasts a short time we avoid taking a loss
+                        if we don't invest in the beginning when it lasts a long time we missed making a profit
+                        if we do invest in the beginning when it lasts a short time we take a loss
+                        if we do invest in the beginning when it lasts a long time we make a profit
+
+                        if we choose a sma window that is really large and a tsl value that is really small relative
+                        to the sma window, the sma trend will stay a long time
+
+                        We could do a min abs(+/-) threshold of the sma slope > 0 to invest than
+                        And just have it immediately invest
+                        And just have it wait for the next tsl to trigger an investment
+                        TRY BOTH
+
+
+                plot 1: price, sma, trend, highlight when sign_of_sma_slope == sign_of_trend_slope, tsl_long, tsl_short
+                plot 2: current p/l of tsl_long and tsl_short
+                plot 3: total p/l of tsl_long, total p/l of tsl_short, net p/l
+
+    Hopefully the profits made when the SMA is correct outway the losses when the SMA is wrong.
+    I expect an x value significantly smaller than w will perform the best
+    because we're trying to catch the volitility of a trend.
+
+TO DO:
+
+    make key for dct in NOTES.txt
+
+    make test to verify that if you just switch back and forth between long and short tsl that it will take a loss
+        
+        investment_helper 1, 2, 4
+        tsl_dct_helper 2
+
+        So the back tests don't seem to be reliable.
+        The backtest.py in ~/rooms/investing/tsls/sma_switch/backtest.py gets 86x returns
+        This backtest is basically a SAR strategy but with SMA slope switching
+        However the SAME price data yields a different result in ~/rooms/investing/sma-tsl-switch/tsl_test.py,
+        even when the data is the same. I want to run it live with a small amount of money, however the likelihood
+        of it profiting seems low. This is because I distinctly remember making a (pure) SAR strategy when I lived
+        with my parents and it taking a loss. However when I recreated a SAR strat (today) it had positive returns
+        in the backtest. This leads me to believe the backtest is flawed somehow (even though I've looked deeply
+        into it and the math seems correct) ... this leads me to want to test it live (but with a small portfolio)
+        to see if it can actually profit. However first I'm going to do a basic simulation of trading fake USD
+        for actual crypto instead of doing percentages to see how/if it changes the annual profit.
+
+        For when I do trade it live though ...
+
+        I can't use Poloniex anymore so I probably need to use another
+        Kraken looks good (allows US customers, has margin trading with 5x leverage, and 0.16% maker fee, 0.26% taker fee. source: https://support.kraken.com/hc/en-us/articles/360000526126-What-are-Maker-and-Taker-fees-)
+        Also check out Kraken Crypto Futures Exchange (50x leverage): https://www.kraken.com/en-us/features/futures ... could work for rebalancing method ... depending on what futures options are available to buy sell, you wouldn't even worry about price.
+
+        also check out other exchanges
+        Kraken's volume is probably good enough but ForEx has bigger volume (biggest in the world I think), also good leverage ... I just need to find a place to trade forex with:
+        low trading fees (some might have 0%! because robinhood pushed it)
+        allows US customers
+        and allows margin trading
+        has an API or some way to trade algorithmically
+
+        Once an exchange is selected, you need to build/find a framework to connect to it and create a kraken-basic-setup repo (or whichever exchange basic-setup) that ideally has both live trading and back testing.
+
+    put thing in useful_plotting_aid.py in this script
+        make vertical line where cursor is
+        put values of data (where cursor is at) in the legend itself
+            this is require repositioning the legends to give them more room 
+                ... and maybe making them basic text boxes instead of legends
+
+    with the current const variables:
+        we miss a large profit from a short
+            this is because the short TSL was tracking
+            but it started tracking before the SMA slope switched to negative
+            ... so basically if we're not going to invest immediately when the
+                sma slope switches (in this ex. switches to negative) we need to
+                start tracking the opposite TSL (in this ex. a long TSL), so that
+                way it gets triggered if theres a really long short
+
+                    ... make it in a different file though
+
+    then make backup_tsl_test2.py
+        update description to explain different between first backup and 2nd
+            1st backup has tsl constant on both sides
+            2nd backup has tsls switching back and forth
+
+    then make it so that investments are made in tandem with the sma
+        and explain the difference between the tests
+
+IDEA:
+
+    for each window length back into time
+    if there is a consistent level of volitility (aka std dev has low volitility (aka the std dev of the std dev))
+    and there is a consistent slope (aka avg slope over a smaller window within this window is conistent (aka it has a low std dev))
+        how long is it likely for this pattern of volitility and slope to continue?
+        especially if the pattern is occuring withing a larger pattern that is with or against this micro pattern
+
+        ... would be useful to test this one with 5 min data over maybe a month
+
+    In the market there are people with different sized portfolios
+    If someone who has large portolio goes long on an asset
+    the ...
+
+        ... Use bollinger bands!
+
+        for w in WINDOW_SIZES:
+
+            if standard deviation of the price is smooth and consistent
+            (aka if the boolinger band's value hasn't changed that much over the timespan of the windows)
+            (aka if the sum of the all the changes in volitility (aka change in standard deviation of the price)
+            over the timespan of the window is close to zero ... )
+
+            AND
+
+            The the SMA slope is above a threshold of Y
+
+                Then set a trailing stop loss at an x value of 2*pi (95 % chance it doesn't get triggered)
+
+        Note:
+            if Y is steep we'll be late to buy in
+            if Y is shallow we'll take more losses
+            The larger the slope the faster it will break
+            if Y is zero
+                this would then be a predictive algorithm
+                    and trades would be made based off likelihoods, not
+
+
+    what if the distance the next timestep's value is from the previous timesteps moving average the more exponential the weights will become.
+    A difference of 0 from the previous moving average will weight them equally for a simple moving average, but a large distance will make the
+    weights very exponential. The equation for could be:
+
+            w[i] = t[i] ^ (1 + d)
+
+            d = absolute value of percentage distance of current timestep's price from previous timestep's moving average
+                    this value will vary from 0.00 to 1.00
+
+        ... this could yeild an SMA that doesn't lag !!!
+
+        ... or not, the lag is what makes it useful in the first place because it smooths out the smaller scale volitility

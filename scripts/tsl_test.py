@@ -3,6 +3,7 @@ import subprocess
 import sys
 sys.path.insert(0, './')
 from poloniex import poloniex
+from block_printer import BlockPrinter
 from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
@@ -11,170 +12,17 @@ MAX_ROWS = 200
 pd.set_option('display.max_rows', MAX_ROWS)
 pd.set_option('display.max_columns', 100)
 pd.set_option('display.width', 1000)
+pd.options.mode.chained_assignment = None # source: https://stackoverflow.com/questions/20625582/how-to-deal-with-settingwithcopywarning-in-pandas
 import numpy as np
 
 
 
-''' NOTES
-
-    STRATEGY DESCRIPTION:
-
-        Switch back and forth between a long and short TSL (just tracking, no investment).
-        When SMA is going up, invest in the long TSL,
-        and when SMA is going down invest in the short TSL.
-
-    EXPERIMENT DESCRIPTION:
-
-        for each coin in COINS:
-            for each sma window length w in SMA_WINDOWS:
-
-                high-light when the sma is + slope and when its - slope
-                    + is green
-                    - is red
-
-                for each TSL value (percent offset from current price) x in TSL_VALUES:
-
-                    determine the p/l for each section of the SMA trend (when it is with it, and when it is against it)
-
-                        when the sma trend direction switches we have no idea how long its going to stay in this direction
-                            if we don't invest in the beginning when it lasts a short time we avoid taking a loss
-                            if we don't invest in the beginning when it lasts a long time we missed making a profit
-                            if we do invest in the beginning when it lasts a short time we take a loss
-                            if we do invest in the beginning when it lasts a long time we make a profit
-
-                            if we choose a sma window that is really large and a tsl value that is really small relative
-                            to the sma window, the sma trend will stay a long time
-
-                            We could do a min abs(+/-) threshold of the sma slope > 0 to invest than
-                            And just have it immediately invest
-                            And just have it wait for the next tsl to trigger an investment
-                            TRY BOTH
-
-
-                    plot 1: price, sma, trend, highlight when sign_of_sma_slope == sign_of_trend_slope, tsl_long, tsl_short
-                    plot 2: current p/l of tsl_long and tsl_short
-                    plot 3: total p/l of tsl_long, total p/l of tsl_short, net p/l
-
-        Hopefully the profits made when the SMA is correct outway the losses when the SMA is wrong.
-        I expect an x value significantly smaller than w will perform the best
-        because we're trying to catch the volitility of a trend.
-
-    TO DO:
-
-        make test to verify that if you just switch back and forth between long and short tsl that it will take a loss
-            
-            investment_helper 1, 2, 4
-            tsl_dct_helper 2
-
-            So the back tests don't seem to be reliable.
-            The backtest.py in ~/rooms/investing/tsls/sma_switch/backtest.py gets 86x returns
-            This backtest is basically a SAR strategy but with SMA slope switching
-            However the SAME price data yields a different result in ~/rooms/investing/sma-tsl-switch/tsl_test.py,
-            even when the data is the same. I want to run it live with a small amount of money, however the likelihood
-            of it profiting seems low. This is because I distinctly remember making a (pure) SAR strategy when I lived
-            with my parents and it taking a loss. However when I recreated a SAR strat (today) it had positive returns
-            in the backtest. This leads me to believe the backtest is flawed somehow (even though I've looked deeply
-            into it and the math seems correct) ... this leads me to want to test it live (but with a small portfolio)
-            to see if it can actually profit. However first I'm going to do a basic simulation of trading fake USD
-            for actual crypto instead of doing percentages to see how/if it changes the annual profit.
-
-            For when I do trade it live though ...
-
-            I can't use Poloniex anymore so I probably need to use another
-            Kraken looks good (allows US customers, has margin trading with 5x leverage, and 0.16% maker fee, 0.26% taker fee. source: https://support.kraken.com/hc/en-us/articles/360000526126-What-are-Maker-and-Taker-fees-)
-            Also check out Kraken Crypto Futures Exchange (50x leverage): https://www.kraken.com/en-us/features/futures ... could work for rebalancing method ... depending on what futures options are available to buy sell, you wouldn't even worry about price.
-
-            also check out other exchanges
-            Kraken's volume is probably good enough but ForEx has bigger volume (biggest in the world I think), also good leverage ... I just need to find a place to trade forex with:
-            low trading fees (some might have 0%! because robinhood pushed it)
-            allows US customers
-            and allows margin trading
-            has an API or some way to trade algorithmically
-
-            Once an exchange is selected, you need to build/find a framework to connect to it and create a kraken-basic-setup repo (or whichever exchange basic-setup) that ideally has both live trading and back testing.
-
-        put thing in useful_plotting_aid.py in this script
-            make vertical line where cursor is
-            put values of data (where cursor is at) in the legend itself
-                this is require repositioning the legends to give them more room 
-                    ... and maybe making them basic text boxes instead of legends
-
-        with the current const variables:
-            we miss a large profit from a short
-                this is because the short TSL was tracking
-                but it started tracking before the SMA slope switched to negative
-                ... so basically if we're not going to invest immediately when the
-                    sma slope switches (in this ex. switches to negative) we need to
-                    start tracking the opposite TSL (in this ex. a long TSL), so that
-                    way it gets triggered if theres a really long short
-
-                        ... make it in a different file though
-
-        then make backup_tsl_test2.py
-            update description to explain different between first backup and 2nd
-                1st backup has tsl constant on both sides
-                2nd backup has tsls switching back and forth
-
-        then make it so that investments are made in tandem with the sma
-            and explain the difference between the tests
-
-    IDEA:
-
-        for each window length back into time
-        if there is a consistent level of volitility (aka std dev has low volitility (aka the std dev of the std dev))
-        and there is a consistent slope (aka avg slope over a smaller window within this window is conistent (aka it has a low std dev))
-            how long is it likely for this pattern of volitility and slope to continue?
-            especially if the pattern is occuring withing a larger pattern that is with or against this micro pattern
-
-            ... would be useful to test this one with 5 min data over maybe a month
-
-        In the market there are people with different sized portfolios
-        If someone who has large portolio goes long on an asset
-        the ...
-
-            ... Use bollinger bands!
-
-            for w in WINDOW_SIZES:
-
-                if standard deviation of the price is smooth and consistent
-                (aka if the boolinger band's value hasn't changed that much over the timespan of the windows)
-                (aka if the sum of the all the changes in volitility (aka change in standard deviation of the price)
-                over the timespan of the window is close to zero ... )
-
-                AND
-
-                The the SMA slope is above a threshold of Y
-
-                    Then set a trailing stop loss at an x value of 2*pi (95 % chance it doesn't get triggered)
-
-            Note:
-                if Y is steep we'll be late to buy in
-                if Y is shallow we'll take more losses
-                The larger the slope the faster it will break
-                if Y is zero
-                    this would then be a predictive algorithm
-                        and trades would be made based off likelihoods, not
-
-
-        what if the distance the next timestep's value is from the previous timesteps moving average the more exponential the weights will become.
-        A difference of 0 from the previous moving average will weight them equally for a simple moving average, but a large distance will make the
-        weights very exponential. The equation for could be:
-
-                w[i] = t[i] ^ (1 + d)
-
-                d = absolute value of percentage distance of current timestep's price from previous timestep's moving average
-                        this value will vary from 0.00 to 1.00
-
-            ... this could yeild an SMA that doesn't lag !!!
-
-            ... or not, the lag is what makes it useful in the first place because it smooths out the smaller scale volitility
-
-    '''
-
 # constants
 QUERI_POLONIEX = False
-BACKTEST_DATA_FILE = './data/price_data/price_data_multiple_coins-BTC_ETH_XRP_LTC_ZEC_XMR_STR_DASH_ETC-2hr_intervals-08_01_2018_7am_to_08_01_2019_4am.csv'
-BACKTEST_DATA_FILE2 = '../tsls/sma_switch1/data/price_data.csv'
+CALCULATE_TSL_DATA = False
+BACKTEST_DATA_FILE = '../data/price_data/price_data_multiple_coins-BTC_ETH_XRP_LTC_ZEC_XMR_STR_DASH_ETC-2hr_intervals-08_01_2018_7am_to_08_01_2019_4am.csv'
+BACKTEST_DATA_FILE = '../data/price_data/price_data_one_coin-BTC_USD-5min_intervals-ONE_QUARTER-11-21-2019-12am_to_02-21-2020-12am.csv'
+BACKTEST_DATA_FILE2 = '../../tsls/sma_switch1/data/price_data.csv'
 LONG_TSLS_FILES = './data/long/'
 SHORT_TSLS_FILES = './data/short/'
 TETHER = 'USDT'
@@ -195,8 +43,8 @@ TF = 0.0025 # TF = trading fee
 INCLUDE_TF = True  # flag if we want to include the TF in our calculations
 
 # SMA_WINDOWS = [9, 19, 29, 39, 49, 59, 69, 79, 89, 99] # most accurate if they're all odd integers
-SMA_WINDOWS = [100]#[50]#[10, 20, 30, 40, 50, 100, 200, 300, 400, 500] # most accurate if they're all odd integers
-TSL_VALUES = [0.01]#[0.0025, 0.005, 0.01, 0.025, 0.05, 0.10, 0.20]
+SMA_WINDOWS = [1000]#[50]#[10, 20, 30, 40, 50, 100, 200, 300, 400, 500] # most accurate if they're all odd integers
+TSL_VALUES = [0.0025]#[0.0025, 0.005, 0.01, 0.025, 0.05, 0.10, 0.20]
 
 # pprint constants
 DEBUG_WITH_CONSOLE = True
@@ -523,7 +371,7 @@ def plot_sma_data_helper(coin, price_series, sma_w_dct):
     return (user_input == 's' or user_input == 'S')
 
 # get TSL data
-def get_tsl_dct(dct, output_tsl_data=False):
+def get_tsl_dct(dct, output_tsl_data=False, save_tsl_data=True):
 
     print('\nCalculating TSL data ...')
     start_time = datetime.now()
@@ -550,13 +398,30 @@ def get_tsl_dct(dct, output_tsl_data=False):
     end_time = datetime.now()
     print('TSL data aquired. Duration: %.2f seconds\n' % (end_time - start_time).total_seconds())
 
+    if save_tsl_data:
+        base_path = '../data/tsl_data/'
+        subprocess.run(['rm', '-rf', base_path]) # clear old data
+        subprocess.run(['mkdir', base_path])
+        for coin in COINS:
+            subprocess.run(['mkdir', base_path + 'asset_%s/' % (coin)])
+            for w in SMA_WINDOWS:
+                subprocess.run(['mkdir', base_path + 'asset_%s/sma_window_%s/' % (coin, w)])
+                for x in TSL_VALUES:
+                    base_path2 = base_path + 'asset_%s/sma_window_%s/tsl_x_%s/' % (coin, w, x)
+                    subprocess.run(['mkdir', base_path2])
+                    long_csv_path  = base_path2 + 'long_df.csv'
+                    short_csv_path = base_path2 + 'short_df.csv'
+                    long_df  = dct['asset_dct'][coin]['sma_dct'][w]['tsl_dct'][x]['long_df']
+                    short_df = dct['asset_dct'][coin]['sma_dct'][w]['tsl_dct'][x]['short_df']
+                    long_df.to_csv(long_csv_path)
+                    short_df.to_csv(short_csv_path)
 
     if output_tsl_data:
 
         plot_tsl_data(dct)
 
     return dct
-def get_tsl_dct_helper1(coin, w, x, price_series, verbose=False):
+def get_tsl_dct_helper1(coin, w, x, price_series, verbose=False, bp=BlockPrinter()):
 
     columns = {
         'enter_price',   # the price that the trade was entered at
@@ -585,6 +450,8 @@ def get_tsl_dct_helper1(coin, w, x, price_series, verbose=False):
             print('-' * 100)
             print('i = %d   price = %.4f' % (i, price))
             print('TRACKING LONG' if tracking_long else 'TRACKING SHORT')
+        else:
+            bp.print('%.1f %%' % (100 * i / price_series.shape[0]))
 
         # if your tracking long, update the long function 1st and the short tsl 2nd, and vice versa
         if tracking_long:
@@ -632,7 +499,7 @@ def get_tsl_dct_helper1(coin, w, x, price_series, verbose=False):
         'long_df'  : long_df,
         'short_df' : short_df
     }
-def get_tsl_dct_helper2(coin, w, x, price_series, verbose=False):
+def get_tsl_dct_helper2(coin, w, x, price_series, verbose=False, bp=BlockPrinter()):
 
     columns = {
         'enter_price',   # the price that the trade was entered at
@@ -875,23 +742,33 @@ def plot_tsl_data_helper(date_labels, x_tick_indeces, coin, price_series, sma_w_
     # determine if we want to continue to plot SMAs or not
     user_input = input('Press s to skip to end of test, or any other key to continue: ')
     return (user_input == 's' or user_input == 'S')
-def get_tsl_dct_from_csv_files(coin, df0, tsl_vals):
-    dct = {
-        'price' : df0['price'],
-        'long'  : {
-            '%.2f%%' % (100*x) :
-                pd.read_csv(
-                    LONG_TSLS_FILES + coin + '/long%.2f.csv' % (100*x),
-                    index_col=[0])
-            for x in tsl_vals},
-        'short' : {
-            '%.2f%%' % (100*x) :
-                pd.read_csv(
-                    SHORT_TSLS_FILES + coin + '/short%.2f.csv' % (100*x),
-                    index_col=[0])
-            for x in tsl_vals}
-    }
+def get_tsl_dct_from_csv_files(dct):
+
+    print('\nGetting TSL data from CSV files ...')
+    start_time = datetime.now()
+
+    for coin in COINS:
+        for w in SMA_WINDOWS:
+            dct['asset_dct'][coin]['sma_dct'][w]['tsl_dct'] = {}
+            for x in TSL_VALUES:
+                filepath = '../data/tsl_data/asset_%s/sma_window_%s/tsl_x_%s/' % (coin, w, x)
+                try:
+                    long_df  = pd.read_csv(filepath + 'long_df.csv',  index_col=[0])
+                    short_df = pd.read_csv(filepath + 'short_df.csv', index_col=[0])
+                except:
+                    print('Failed to find data at: %s\n' % (filepath))
+                    sys.exit()
+                
+                dct['asset_dct'][coin]['sma_dct'][w]['tsl_dct'][x] = {
+                    'long_df'  : long_df,
+                    'short_df' : short_df
+                }
+
+    end_time = datetime.now()
+    print('TSL data aquired. Duration: %.2f seconds\n' % (end_time - start_time).total_seconds())
+
     return dct
+
 
 # get investment data
 def get_investments(dct, output_investment_data=False):
@@ -926,7 +803,7 @@ def get_investments(dct, output_investment_data=False):
         plot_investment_data(dct)
 
     return dct
-def get_investments_helper2(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False):
+def get_investments_helper2(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False, bp=BlockPrinter()):
 
     ''' NOTE:
         This investment helper switches back and forth between long and short TSLs
@@ -976,6 +853,8 @@ def get_investments_helper2(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
             print(long_df.iloc[i])
             print('\nshort_df.iloc[%d]' % i)
             print(short_df.iloc[i])
+        else:
+            bp.print('%.1f %%' % (100 * i / price_series.shape[0]))
 
         # if invested long
         if long_df.at[i, 'invested']:
@@ -1068,7 +947,7 @@ def get_investments_helper2(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
         'short_df'    : short_df,
         'tot_returns' : tot_returns
     }
-def get_investments_helper3(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False):
+def get_investments_helper3(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False, bp=BlockPrinter()):
 
     ''' NOTE:
         This investment helper switches back and forth between long and short TSLs.
@@ -1123,6 +1002,9 @@ def get_investments_helper3(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
             print(long_df.iloc[i])
             print('\nshort_df.iloc[%d]' % i)
             print(short_df.iloc[i])
+        else:
+            bp.print('%.1f %%' % (100 * i / price_series.shape[0]))
+
 
         if sma_w_df.iloc[i]['sma_positive_slope']: # SMA has positive slope
 
@@ -1312,7 +1194,7 @@ def get_investments_helper3(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
         'short_df'    : short_df,
         'tot_returns' : tot_returns
     }
-def get_investments_helper4(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False):
+def get_investments_helper4(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbose=False, bp=BlockPrinter()):
 
     ''' NOTE:
         This investment helper switches back and forth between long and short TSLs.
@@ -1365,6 +1247,8 @@ def get_investments_helper4(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
             print(long_df.iloc[i])
             print('\nshort_df.iloc[%d]' % i)
             print(short_df.iloc[i])
+        else:
+            bp.print('%.1f %%' % (100 * i / price_series.shape[0]))
 
         if sma_w_df.iloc[i]['sma_positive_slope']: # SMA has positive slope
 
@@ -1575,6 +1459,8 @@ def update_portfolio_returns(df, i):
     return df
 def plot_investment_data(dct):
 
+    print('\nPlotting Results ...')
+
     # create date_labels and x_tick_indeces
     first_date = df['datetime'].iloc[0]
     date_fmt = '%m-%d-%Y'
@@ -1622,7 +1508,7 @@ def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series,
     _legend_loc, _b2a = 'center left', (1, 0.5) # puts legend ouside plot
 
     ax[0].plot(price_series,          color='black', label='price')
-    # ax[0].plot(sma_data,              color='blue',  label=sma_lbl)
+    ax[0].plot(sma_data,              color='blue',  label=sma_lbl)
     ax[0].plot(long_df['stop_loss'],  color='green', label='%s%% long TSL ' % long_x_str)
     ax[0].plot(short_df['stop_loss'], color='red',   label='%s%% short TSL ' % short_x_str)
     ax[0].legend(loc=_legend_loc, bbox_to_anchor=_b2a)
@@ -1658,14 +1544,14 @@ def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series,
 
     # write text explaining when SMA slope is positive and negative
     ax[0].text(
-        1.10, 0.05,
+        1.10, 0.00,
         '+ SMA slope\n -  SMA slope',
         transform=ax[0].transAxes,
         fontsize=10)
 
     # place red and green rectangles next to that text
     ax[0].text(
-        1.02, 0.17, '            ', # number of spaces controls rect width
+        1.02, 0.12, '            ', # number of spaces controls rect width
         transform=ax[0].transAxes,
         bbox=dict(
             boxstyle='square',
@@ -1675,7 +1561,7 @@ def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series,
         ),
         fontsize=7) # fontsize controls rect height
     ax[0].text(
-        1.02, 0.05, '            ',
+        1.02, 0.00, '            ',
         transform=ax[0].transAxes,
         bbox=dict(
             boxstyle='square',
@@ -1685,12 +1571,23 @@ def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series,
         ),
         fontsize=7)
 
-    ax[1].plot(long_df['cur_sl_pl'],  color='green', label='Long Current Stop Loss P/L')
-    ax[1].plot(short_df['cur_sl_pl'], color='red',   label='Short Current Stop Loss P/L')
     ''' Notes:
         cur_sl_pl was used instead of cur_price_pl because the sl will be triggered
         before the price reaches a value lower/higher than the stop loss
         '''
+    def plot_vertical_lines(ax, df, color, label):
+        for i, row in df.iterrows():
+            if row['triggered']:
+                ax.plot(
+                    [i,   i],
+                    [0.0, row['cur_sl_pl']],
+                    color=color,
+                    label=label)
+    plot_vertical_lines(ax[1], long_df,  'green', 'Long Current Stop Loss P/L')
+    plot_vertical_lines(ax[1], short_df, 'red',   'Short Current Stop Loss P/L')
+    # ax[1].plot(long_df['cur_sl_pl'],  color='green', label='Long Current Stop Loss P/L')
+    # ax[1].plot(short_df['cur_sl_pl'], color='red',   label='Short Current Stop Loss P/L')
+    ax[1].plot(sma_w_dct['df']['sma'].diff().abs() / 100, color='blue', label='abs(SMA slope)')
     ax[1].legend(loc=_legend_loc, bbox_to_anchor=_b2a)
     ax[1].grid()
     # ax[1].yaxis.grid()  # draw horizontal lines
@@ -1727,32 +1624,6 @@ def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series,
     return (user_input == 's' or user_input == 'S')
 
 
-def print_dct(dct):
-
-    # print(dct['asset_dct']['BTC'])
-    # return
-
-    print('time_df:')
-    print(dct['time_df'])
-
-    print('\nasset_dct:')
-    for i, (coin, coin_data) in enumerate(dct['asset_dct'].items()):
-        print('coin: %s' % coin)
-        price_df = coin_data['price_df']
-        print('price_df:')
-        print(price_df)
-        print('sma_dct:')
-        for j, (w, sma_dct) in enumerate(coin_data['sma_dct'].items()):
-            print('sma_window: %d' % int(w))
-            sma_df = sma_dct['df']
-            print('sma_w_dct:')
-            for k,v in sma_dct.items():
-                print(k)
-                print(v)
-                print()
-
-            return
-
 
 if __name__ == '__main__':
 
@@ -1779,9 +1650,14 @@ if __name__ == '__main__':
 
     # calculate SMA data
     dct = get_sma_dct(dct, output_sma_data=False)
+    # sma_w_dct = dct['asset_dct'][COINS[0]]['sma_dct'][SMA_WINDOWS[0]]
+    # print(sma_w_dct['df']['sma'].diff().abs())
+    # sys.exit()
+
 
     # calculate TSL data
-    dct = get_tsl_dct(dct, output_tsl_data=False)
+    dct = get_tsl_dct(dct, output_tsl_data=False) \
+            if CALCULATE_TSL_DATA else get_tsl_dct_from_csv_files(dct)
 
     # calculate investment p/l
     dct = get_investments(dct, output_investment_data=True)
