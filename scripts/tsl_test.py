@@ -20,8 +20,8 @@ import numpy as np
 # constants
 QUERI_POLONIEX = False
 CALCULATE_TSL_DATA = False
-BACKTEST_DATA_FILE = '../data/price_data/price_data_multiple_coins-BTC_ETH_XRP_LTC_ZEC_XMR_STR_DASH_ETC-2hr_intervals-08_01_2018_7am_to_08_01_2019_4am.csv'
-# BACKTEST_DATA_FILE = '../data/price_data/price_data_one_coin-BTC_USD-5min_intervals-ONE_QUARTER-11-21-2019-12am_to_02-21-2020-12am.csv'
+# BACKTEST_DATA_FILE = '../data/price_data/price_data_multiple_coins-BTC_ETH_XRP_LTC_ZEC_XMR_STR_DASH_ETC-2hr_intervals-08_01_2018_7am_to_08_01_2019_4am.csv'
+BACKTEST_DATA_FILE = '../data/price_data/price_data_one_coin-BTC_USD-5min_intervals-ONE_QUARTER-11-21-2019-12am_to_02-21-2020-12am.csv'
 BACKTEST_DATA_FILE2 = '../../tsls/sma_switch1/data/price_data.csv'
 LONG_TSLS_FILES = './data/long/'
 SHORT_TSLS_FILES = './data/short/'
@@ -43,7 +43,8 @@ TF = 0.0025 # TF = trading fee
 INCLUDE_TF = True  # flag if we want to include the TF in our calculations
 
 # SMA_WINDOWS = [9, 19, 29, 39, 49, 59, 69, 79, 89, 99] # most accurate if they're all odd integers
-SMA_WINDOWS = [100]#[50]#[10, 20, 30, 40, 50, 100, 200, 300, 400, 500] # most accurate if they're all odd integers
+SMA_WINDOWS = [2400]#[10, 20, 30, 40, 50, 100, 200, 300, 400, 500] # most accurate if they're all odd integers
+MIN_SMA_SLOPE = 0.01
 TSL_VALUES = [0.01]#[0.0025, 0.005, 0.01, 0.025, 0.05, 0.10, 0.20]
 
 # pprint constants
@@ -237,10 +238,17 @@ def get_sma_dct(dct, output_sma_data=False):
             pct_with_trend_df.at[w, coin] = pct_with_trend
             total_ave_pct_with_trend += pct_with_trend
 
-            # calculate when the sma has a positive slope
-            sma_positive_slope_bool_series = sma_series.diff() > 0
+            # calculate when the sma has a slope greater than MIN_SMA_SLOPE
+            def get_slope_category(slope):
+                if slope >= MIN_SMA_SLOPE:
+                    return 'above'
+                elif slope <= -MIN_SMA_SLOPE:
+                    return 'below'
+                return 'between'
+            sma_slope_category_series = sma_series.diff().apply(
+                lambda slope : get_slope_category(slope))
 
-            # also ... create the boolinger bands for this SMA
+            # also ... create the bollinger bands for this SMA
             std_dev_series = price_series.rolling(window=w).std()
 
             sma_w_dct = {
@@ -251,7 +259,7 @@ def get_sma_dct(dct, output_sma_data=False):
                     'trend'                 : trend_series,
                     'sma'                   : sma_series,
                     'sma_with_trend'        : sma_with_trend_bool_series,
-                    'sma_positive_slope'    : sma_positive_slope_bool_series,
+                    'sma_slope_category'    : sma_slope_category_series,
                     'std_dev'               : std_dev_series,
                     'bollinger_upper_bound' : sma_series + 2 * std_dev_series,
                     'bollinger_lower_bound' : sma_series - 2 * std_dev_series
@@ -399,6 +407,13 @@ def get_tsl_dct(dct, output_tsl_data=False, save_tsl_data=True):
     print('TSL data aquired. Duration: %.2f seconds\n' % (end_time - start_time).total_seconds())
 
     if save_tsl_data:
+
+        def mkdir(dir_path):
+            dir = dir_path.split('/')[-1]
+            par_dir = dir_path.split('/')[-2]
+            ret = subprocess.run(['ls', par_dir])
+
+
         base_path = '../data/tsl_data/'
         subprocess.run(['mkdir', base_path])
         for coin in COINS:
@@ -705,11 +720,11 @@ def plot_tsl_data_helper(date_labels, x_tick_indeces, coin, price_series, sma_w_
 
     # highlight SMA slope + green
     # highlight SMA slope - red
-    def highlight_sma_slope(up=True, color='green'):
+    def highlight_sma_slope(category, color='green'):
         ranges_sma_direction = []
         range_start, range_end = None, None
-        for index, value in sma_w_dct['df']['sma_positive_slope'].items():
-            if value == up: # True
+        for index, value in sma_w_dct['df']['sma_slope_category'].items():
+            if value == category: # True
                 if range_start != None:
                     pass # continue on ...
                 else: # just starting
@@ -723,8 +738,8 @@ def plot_tsl_data_helper(date_labels, x_tick_indeces, coin, price_series, sma_w_
                     pass # continue on ...
         for range_start, range_end in ranges_sma_direction:
             ax.axvspan(range_start, range_end, color=color, alpha=0.5)
-    highlight_sma_slope(up=True,  color='green')
-    highlight_sma_slope(up=False, color='red')
+    highlight_sma_slope('above', color='green')
+    highlight_sma_slope('below', color='red')
 
     ax.set_xticks(x_tick_indeces)
     ax.set_xticklabels(date_labels, ha='right', rotation=45)  # x axis should show date_labeles
@@ -1005,9 +1020,9 @@ def get_investments_helper3(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
             bp.print('%.1f %%' % (100 * i / price_series.shape[0]))
 
 
-        if sma_w_df.iloc[i]['sma_positive_slope']: # SMA has positive slope
+        if sma_w_df.iloc[i]['sma_slope_category'] == 'above': # SMA slope is above MIN_SMA_SLOPE
 
-            if verbose: print('\nSMA slope is positive')
+            if verbose: print('\nSMA slope is above MIN_SMA_SLOPE')
 
             # if invested long
             if long_df.at[i, 'invested']:
@@ -1084,9 +1099,9 @@ def get_investments_helper3(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
 
                     if verbose: print('short TSL not triggered')
 
-        else: # SMA has negative slope
+        elif sma_w_df.iloc[i]['sma_slope_category'] == 'below': # SMA slope below MIN_SMA_SLOPE
 
-            if verbose: print('\nSMA slope is negative')
+            if verbose: print('\nSMA slope below MIN_SMA_SLOPE')
 
             # if invested short
             if short_df.at[i, 'invested']:
@@ -1162,6 +1177,65 @@ def get_investments_helper3(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
                 else:
 
                     if verbose: print('long TSL not triggered')
+
+        else: # SMA slope is between +/- MIN_SMA_SLOPE
+
+            if verbose: print('SMA slope is between +/- MIN_SMA_SLOPE')
+
+            # if invested long
+            if long_df.at[i, 'invested']:
+
+                if verbose: print('invested long')
+
+                # if long TSL triggered
+                if long_df.at[i, 'triggered']:
+
+                    if verbose: print('long TSL triggered')
+
+                    # exit long investment
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+                    invested_long = False
+
+                    if verbose: print('exitted long investment')
+
+                else: # else long TSL wasn't triggered
+
+                    if verbose: print('long TSL not triggered')
+
+                    # update long investment
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+
+                    if verbose: print('long investment updated')
+
+            # else if invested short
+            elif short_df.at[i, 'invested']:
+
+                if verbose: print('invested short')
+
+                # if short TSL triggered
+                if short_df.at[i, 'triggered']:
+
+                    if verbose: print('short TSL triggered')
+
+                    # exit short investment
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+                    invested_short = False
+
+                    if verbose: print('exitted short investment')
+
+                else: # else short TSL wasn't triggered
+
+                    if verbose: print('short TSL not triggered')
+
+                    # update short investment
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+
+                    if verbose: print('short investment updated')
+
+            else: # not invested
+
+                pass
+
 
         long_df  = update_portfolio_returns(long_df,  i)
         short_df = update_portfolio_returns(short_df, i)
@@ -1210,13 +1284,15 @@ def get_investments_helper4(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
     long_df, short_df = tsl_x_dct['long_df'], tsl_x_dct['short_df']
     invested_long, invested_short = False, False
 
-    # init the 1st w 'invested' flags to false, and the 1st w 'tot_sl_pl' and 'tot_price_pl' to 0
+    # init the 1st w 'invested' flags to false, and the 1st w 'tot_sl_pl' and 'tot_price_pl' to 1.0
     long_df['invested'][:w]      = False
-    long_df['tot_sl_pl'][:w]     = 0.0
-    long_df['tot_price_pl'][:w]  = 0.0
+    long_df['tot_sl_pl'][:w]     = 1.0
+    long_df['tot_price_pl'][:w]  = 1.0
     short_df['invested'][:w]     = False
-    short_df['tot_sl_pl'][:w]    = 0.0
-    short_df['tot_price_pl'][:w] = 0.0
+    short_df['tot_sl_pl'][:w]    = 1.0
+    short_df['tot_price_pl'][:w] = 1.0
+
+    tot_returns = [1.00] * w
 
     # print('BEFORE')
 
@@ -1224,6 +1300,8 @@ def get_investments_helper4(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
     # print(long_df)
     # print('\nshort_df')
     # print(short_df)
+    # print('tot_returns')
+    # print(pd.Series(tot_returns))
     # input()
 
     # print(price_series)
@@ -1249,9 +1327,10 @@ def get_investments_helper4(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
         else:
             bp.print('%.1f %%' % (100 * i / price_series.shape[0]))
 
-        if sma_w_df.iloc[i]['sma_positive_slope']: # SMA has positive slope
 
-            if verbose: print('\nSMA slope is positive')
+        if sma_w_df.iloc[i]['sma_slope_category'] == 'above': # SMA slope is above MIN_SMA_SLOPE
+
+            if verbose: print('\nSMA slope is above MIN_SMA_SLOPE')
 
             # if invested long
             if long_df.at[i, 'invested']:
@@ -1328,9 +1407,9 @@ def get_investments_helper4(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
 
                     if verbose: print('short TSL not triggered')
 
-        else: # SMA has negative slope
+        elif sma_w_df.iloc[i]['sma_slope_category'] == 'below': # SMA slope below MIN_SMA_SLOPE
 
-            if verbose: print('\nSMA slope is negative')
+            if verbose: print('\nSMA slope below MIN_SMA_SLOPE')
 
             # if invested short
             if short_df.at[i, 'invested']:
@@ -1407,8 +1486,73 @@ def get_investments_helper4(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
 
                     if verbose: print('long TSL not triggered')
 
+        else: # SMA slope is between +/- MIN_SMA_SLOPE
+
+            if verbose: print('SMA slope is between +/- MIN_SMA_SLOPE')
+
+            # if invested long
+            if long_df.at[i, 'invested']:
+
+                if verbose: print('invested long')
+
+                # if long TSL triggered
+                if long_df.at[i, 'triggered']:
+
+                    if verbose: print('long TSL triggered')
+
+                    # exit long investment
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+                    invested_long = False
+
+                    if verbose: print('exitted long investment')
+
+                else: # else long TSL wasn't triggered
+
+                    if verbose: print('long TSL not triggered')
+
+                    # update long investment
+                    long_df = update_investment_returns(price, long_df, i, 'long')
+
+                    if verbose: print('long investment updated')
+
+            # else if invested short
+            elif short_df.at[i, 'invested']:
+
+                if verbose: print('invested short')
+
+                # if short TSL triggered
+                if short_df.at[i, 'triggered']:
+
+                    if verbose: print('short TSL triggered')
+
+                    # exit short investment
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+                    invested_short = False
+
+                    if verbose: print('exitted short investment')
+
+                else: # else short TSL wasn't triggered
+
+                    if verbose: print('short TSL not triggered')
+
+                    # update short investment
+                    short_df = update_investment_returns(price, short_df, i, 'short')
+
+                    if verbose: print('short investment updated')
+
+            else: # not invested
+
+                pass
+
+
         long_df  = update_portfolio_returns(long_df,  i)
         short_df = update_portfolio_returns(short_df, i)
+        tot_returns_i = tot_returns[-1]
+        if long_df.at[i, 'invested'] and long_df.at[i, 'triggered']:
+            tot_returns_i *= 1.0 + long_df.loc[i, 'cur_sl_pl']
+        elif short_df.at[i, 'invested'] and short_df.at[i, 'triggered']:
+            tot_returns_i *= 1.0 + short_df.loc[i, 'cur_sl_pl']
+        tot_returns.append(tot_returns_i)
 
         if verbose:
             print()
@@ -1421,13 +1565,17 @@ def get_investments_helper4(coin, w, x, price_series, sma_w_df, tsl_x_dct, verbo
     # print(long_df)
     # print('\nshort_df')
     # print(short_df)
-    # # input()
+    # print('tot_returns')
+    # print(pd.Series(tot_returns))
+    # input()
 
 
     return {
-        'long_df'  : long_df,
-        'short_df' : short_df
+        'long_df'     : long_df,
+        'short_df'    : short_df,
+        'tot_returns' : tot_returns
     }
+
 def update_investment_returns(price, df, i, investment_type):
 
     # update p/l variables
@@ -1520,11 +1668,11 @@ def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series,
 
     # highlight SMA slope + green
     # highlight SMA slope - red
-    def highlight_sma_slope(up=True, color='green'):
+    def highlight_sma_slope(category, color='green'):
         ranges_sma_direction = []
         range_start, range_end = None, None
-        for index, value in sma_w_dct['df']['sma_positive_slope'].items():
-            if value == up: # True
+        for index, value in sma_w_dct['df']['sma_slope_category'].items():
+            if value == category: # True
                 if range_start != None:
                     pass # continue on ...
                 else: # just starting
@@ -1538,8 +1686,8 @@ def plot_investment_data_helper(date_labels, x_tick_indeces, coin, price_series,
                     pass # continue on ...
         for range_start, range_end in ranges_sma_direction:
             ax[0].axvspan(range_start, range_end, color=color, alpha=0.5)
-    highlight_sma_slope(up=True,  color='green')
-    highlight_sma_slope(up=False, color='red')
+    highlight_sma_slope('above', color='green')
+    highlight_sma_slope('below', color='red')
 
     # write text explaining when SMA slope is positive and negative
     ax[0].text(
@@ -1660,4 +1808,5 @@ if __name__ == '__main__':
 
     # calculate investment p/l
     dct = get_investments(dct, output_investment_data=True)
+
 
